@@ -38,11 +38,21 @@ Create a `.env` file in the project root:
 
 ```bash
 OPENROUTER_API_KEY=sk-or-v1-...
+SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
+SUPABASE_API_KEY_SECRET=sb_secret_...
 ```
 
 Get your API key at [openrouter.ai](https://openrouter.ai/). Make sure to purchase the credits you need, or sign up for automatic top up.
+Get your Supabase values in **Project Settings -> API**.
+Keep `SUPABASE_API_KEY_SECRET` server-side only. Do not expose it in frontend env files.
 
-### 3. Configure Models (Optional)
+### 3. Create Supabase Database Tables
+
+Run the SQL in `backend/supabase_schema.sql` inside your Supabase project (SQL Editor).
+
+This creates the `conversations` and `messages` tables, indexes, and Row Level Security policies so users can only access their own rows.
+
+### 4. Configure Models (Optional)
 
 Edit `backend/config.py` to customize the council:
 
@@ -81,7 +91,7 @@ Then open http://localhost:5173 in your browser.
 
 ## Tech Stack
 
-- **Backend:** FastAPI (Python 3.10+), async httpx, OpenRouter API
+- **Backend:** FastAPI (Python 3.10+), async httpx, OpenRouter API, Supabase Auth
 - **Frontend:** React + Vite, react-markdown for rendering
-- **Storage:** JSON files in `data/conversations/`
+- **Storage:** Supabase Postgres (`conversations` + `messages` tables)
 - **Package Management:** uv for Python, npm for JavaScript

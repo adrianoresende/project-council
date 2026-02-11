@@ -1,4 +1,3 @@
-import { useState, useEffect } from 'react';
 import './Sidebar.css';
 
 export default function Sidebar({
@@ -6,11 +5,19 @@ export default function Sidebar({
   currentConversationId,
   onSelectConversation,
   onNewConversation,
+  userEmail,
+  onLogout,
 }) {
   return (
     <div className="sidebar">
       <div className="sidebar-header">
         <h1>LLM Council</h1>
+        <div className="sidebar-user-row">
+          <span className="sidebar-user-email">{userEmail}</span>
+          <button className="logout-btn" onClick={onLogout}>
+            Log out
+          </button>
+        </div>
         <button className="new-conversation-btn" onClick={onNewConversation}>
           + New Conversation
         </button>

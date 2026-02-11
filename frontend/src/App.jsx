@@ -1,54 +1,108 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Sidebar from './components/Sidebar';
 import ChatInterface from './components/ChatInterface';
+import AuthScreen from './components/AuthScreen';
 import { api } from './api';
 import './App.css';
 
 function App() {
+  const [user, setUser] = useState(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [conversations, setConversations] = useState([]);
   const [currentConversationId, setCurrentConversationId] = useState(null);
   const [currentConversation, setCurrentConversation] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Load conversations on mount
-  useEffect(() => {
-    loadConversations();
+  const clearChatState = useCallback(() => {
+    setConversations([]);
+    setCurrentConversationId(null);
+    setCurrentConversation(null);
+    setIsLoading(false);
   }, []);
 
-  // Load conversation details when selected
-  useEffect(() => {
-    if (currentConversationId) {
-      loadConversation(currentConversationId);
-    }
-  }, [currentConversationId]);
+  const handleUnauthorized = useCallback(() => {
+    api.clearAccessToken();
+    setUser(null);
+    clearChatState();
+  }, [clearChatState]);
 
-  const loadConversations = async () => {
+  const loadConversations = useCallback(async () => {
     try {
       const convs = await api.listConversations();
       setConversations(convs);
     } catch (error) {
+      if (error.status === 401) {
+        handleUnauthorized();
+        return;
+      }
       console.error('Failed to load conversations:', error);
     }
-  };
+  }, [handleUnauthorized]);
 
-  const loadConversation = async (id) => {
+  const loadConversation = useCallback(async (id) => {
     try {
       const conv = await api.getConversation(id);
       setCurrentConversation(conv);
     } catch (error) {
+      if (error.status === 401) {
+        handleUnauthorized();
+        return;
+      }
       console.error('Failed to load conversation:', error);
     }
+  }, [handleUnauthorized]);
+
+  useEffect(() => {
+    const bootstrapSession = async () => {
+      const token = api.getAccessToken();
+      if (!token) {
+        setIsAuthLoading(false);
+        return;
+      }
+
+      try {
+        const currentUser = await api.getCurrentUser();
+        setUser(currentUser);
+        await loadConversations();
+      } catch {
+        handleUnauthorized();
+      } finally {
+        setIsAuthLoading(false);
+      }
+    };
+
+    bootstrapSession();
+  }, [handleUnauthorized, loadConversations]);
+
+  useEffect(() => {
+    if (user && currentConversationId) {
+      loadConversation(currentConversationId);
+    }
+  }, [user, currentConversationId, loadConversation]);
+
+  const handleAuthenticated = async (authenticatedUser) => {
+    setUser(authenticatedUser);
+    clearChatState();
+    await loadConversations();
+  };
+
+  const handleLogout = () => {
+    handleUnauthorized();
   };
 
   const handleNewConversation = async () => {
     try {
       const newConv = await api.createConversation();
-      setConversations([
-        { id: newConv.id, created_at: newConv.created_at, message_count: 0 },
-        ...conversations,
+      setConversations((prev) => [
+        { id: newConv.id, created_at: newConv.created_at, message_count: 0, title: newConv.title },
+        ...prev,
       ]);
       setCurrentConversationId(newConv.id);
     } catch (error) {
+      if (error.status === 401) {
+        handleUnauthorized();
+        return;
+      }
       console.error('Failed to create conversation:', error);
     }
   };
@@ -62,14 +116,12 @@ function App() {
 
     setIsLoading(true);
     try {
-      // Optimistically add user message to UI
       const userMessage = { role: 'user', content };
       setCurrentConversation((prev) => ({
         ...prev,
         messages: [...prev.messages, userMessage],
       }));
 
-      // Create a partial assistant message that will be updated progressively
       const assistantMessage = {
         role: 'assistant',
         stage1: null,
@@ -83,13 +135,11 @@ function App() {
         },
       };
 
-      // Add the partial assistant message
       setCurrentConversation((prev) => ({
         ...prev,
         messages: [...prev.messages, assistantMessage],
       }));
 
-      // Send message with streaming
       await api.sendMessageStream(currentConversationId, content, (eventType, event) => {
         switch (eventType) {
           case 'stage1_start':
@@ -151,12 +201,10 @@ function App() {
             break;
 
           case 'title_complete':
-            // Reload conversations to get updated title
             loadConversations();
             break;
 
           case 'complete':
-            // Stream complete, reload conversations list
             loadConversations();
             setIsLoading(false);
             break;
@@ -171,8 +219,12 @@ function App() {
         }
       });
     } catch (error) {
+      if (error.status === 401) {
+        handleUnauthorized();
+        return;
+      }
+
       console.error('Failed to send message:', error);
-      // Remove optimistic messages on error
       setCurrentConversation((prev) => ({
         ...prev,
         messages: prev.messages.slice(0, -2),
@@ -181,6 +233,18 @@ function App() {
     }
   };
 
+  if (isAuthLoading) {
+    return (
+      <div className="auth-loading">
+        <p>Checking session...</p>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <AuthScreen onAuthenticated={handleAuthenticated} />;
+  }
+
   return (
     <div className="app">
       <Sidebar
@@ -188,6 +252,8 @@ function App() {
         currentConversationId={currentConversationId}
         onSelectConversation={handleSelectConversation}
         onNewConversation={handleNewConversation}
+        userEmail={user.email}
+        onLogout={handleLogout}
       />
       <ChatInterface
         conversation={currentConversation}

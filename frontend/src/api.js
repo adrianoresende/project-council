@@ -2,68 +2,124 @@
  * API client for the LLM Council backend.
  */
 
-const API_BASE = 'http://localhost:8001';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001';
+const AUTH_STORAGE_KEY = 'llm-council-access-token';
+
+let accessToken = localStorage.getItem(AUTH_STORAGE_KEY);
+
+function getAuthHeaders() {
+  if (!accessToken) return {};
+  return { Authorization: `Bearer ${accessToken}` };
+}
+
+async function parseError(response, fallbackMessage) {
+  try {
+    const payload = await response.json();
+    return payload.detail || payload.message || fallbackMessage;
+  } catch {
+    return fallbackMessage;
+  }
+}
+
+async function request(path, options = {}, requiresAuth = true) {
+  const headers = {
+    ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+    ...(requiresAuth ? getAuthHeaders() : {}),
+    ...(options.headers || {}),
+  };
+
+  const response = await fetch(`${API_BASE}${path}`, {
+    ...options,
+    headers,
+  });
+
+  if (!response.ok) {
+    const message = await parseError(response, 'Request failed');
+    const error = new Error(message);
+    error.status = response.status;
+    throw error;
+  }
+
+  return response.json();
+}
 
 export const api = {
+  setAccessToken(token) {
+    accessToken = token;
+    if (token) {
+      localStorage.setItem(AUTH_STORAGE_KEY, token);
+      return;
+    }
+    localStorage.removeItem(AUTH_STORAGE_KEY);
+  },
+
+  getAccessToken() {
+    return accessToken;
+  },
+
+  clearAccessToken() {
+    this.setAccessToken(null);
+  },
+
+  async register(email, password) {
+    return request(
+      '/api/auth/register',
+      {
+        method: 'POST',
+        body: JSON.stringify({ email, password }),
+      },
+      false
+    );
+  },
+
+  async login(email, password) {
+    return request(
+      '/api/auth/login',
+      {
+        method: 'POST',
+        body: JSON.stringify({ email, password }),
+      },
+      false
+    );
+  },
+
+  async getCurrentUser() {
+    const data = await request('/api/auth/me');
+    return data.user;
+  },
+
   /**
    * List all conversations.
    */
   async listConversations() {
-    const response = await fetch(`${API_BASE}/api/conversations`);
-    if (!response.ok) {
-      throw new Error('Failed to list conversations');
-    }
-    return response.json();
+    return request('/api/conversations');
   },
 
   /**
    * Create a new conversation.
    */
   async createConversation() {
-    const response = await fetch(`${API_BASE}/api/conversations`, {
+    return request('/api/conversations', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify({}),
     });
-    if (!response.ok) {
-      throw new Error('Failed to create conversation');
-    }
-    return response.json();
   },
 
   /**
    * Get a specific conversation.
    */
   async getConversation(conversationId) {
-    const response = await fetch(
-      `${API_BASE}/api/conversations/${conversationId}`
-    );
-    if (!response.ok) {
-      throw new Error('Failed to get conversation');
-    }
-    return response.json();
+    return request(`/api/conversations/${conversationId}`);
   },
 
   /**
    * Send a message in a conversation.
    */
   async sendMessage(conversationId, content) {
-    const response = await fetch(
-      `${API_BASE}/api/conversations/${conversationId}/message`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ content }),
-      }
-    );
-    if (!response.ok) {
-      throw new Error('Failed to send message');
-    }
-    return response.json();
+    return request(`/api/conversations/${conversationId}/message`, {
+      method: 'POST',
+      body: JSON.stringify({ content }),
+    });
   },
 
   /**
@@ -80,13 +136,17 @@ export const api = {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...getAuthHeaders(),
         },
         body: JSON.stringify({ content }),
       }
     );
 
     if (!response.ok) {
-      throw new Error('Failed to send message');
+      const message = await parseError(response, 'Failed to send message');
+      const error = new Error(message);
+      error.status = response.status;
+      throw error;
     }
 
     const reader = response.body.getReader();
@@ -105,8 +165,8 @@ export const api = {
           try {
             const event = JSON.parse(data);
             onEvent(event.type, event);
-          } catch (e) {
-            console.error('Failed to parse SSE event:', e);
+          } catch (error) {
+            console.error('Failed to parse SSE event:', error);
           }
         }
       }

@@ -18,6 +18,37 @@
   color: #333;
 }
 
+.sidebar-user-row {
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sidebar-user-email {
+  font-size: 12px;
+  color: #64748b;
+  max-width: 165px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.logout-btn {
+  border: 1px solid #d0d9e7;
+  background: #ffffff;
+  color: #475569;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.logout-btn:hover {
+  background: #f8fafc;
+}
+
 .new-conversation-btn {
   width: 100%;
   padding: 10px;
