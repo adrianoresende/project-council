@@ -5,6 +5,69 @@ from .openrouter import query_models_parallel, query_model
 from .config import COUNCIL_MODELS, CHAIRMAN_MODEL
 
 
+def _to_int(value: Any) -> int:
+    """Best-effort integer conversion."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _to_float(value: Any) -> float | None:
+    """Best-effort float conversion."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def empty_usage_summary() -> Dict[str, Any]:
+    """Return a normalized empty usage summary."""
+    return {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "total_cost": 0.0,
+        "model_calls": 0,
+    }
+
+
+def _add_call_usage(total: Dict[str, Any], usage: Any):
+    """Accumulate usage from a single model call."""
+    if not isinstance(usage, dict):
+        return
+
+    total["input_tokens"] += _to_int(usage.get("input_tokens"))
+    total["output_tokens"] += _to_int(usage.get("output_tokens"))
+    total["total_tokens"] += _to_int(usage.get("total_tokens"))
+
+    cost = _to_float(usage.get("cost"))
+    if cost is not None:
+        total["total_cost"] += cost
+
+    total["model_calls"] += 1
+
+
+def summarize_council_usage(
+    stage1_results: List[Dict[str, Any]],
+    stage2_results: List[Dict[str, Any]],
+    stage3_result: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Aggregate usage across stage 1, stage 2, and stage 3 model calls."""
+    total = empty_usage_summary()
+
+    for result in stage1_results:
+        _add_call_usage(total, result.get("usage"))
+
+    for result in stage2_results:
+        _add_call_usage(total, result.get("usage"))
+
+    _add_call_usage(total, stage3_result.get("usage"))
+
+    total["total_cost"] = round(total["total_cost"], 8)
+    return total
+
+
 async def stage1_collect_responses(user_query: str) -> List[Dict[str, Any]]:
     """
     Stage 1: Collect individual responses from all council models.
@@ -26,7 +89,8 @@ async def stage1_collect_responses(user_query: str) -> List[Dict[str, Any]]:
         if response is not None:  # Only include successful responses
             stage1_results.append({
                 "model": model,
-                "response": response.get('content', '')
+                "response": response.get('content', ''),
+                "usage": response.get("usage", empty_usage_summary()),
             })
 
     return stage1_results
@@ -106,7 +170,8 @@ Now provide your evaluation and ranking:"""
             stage2_results.append({
                 "model": model,
                 "ranking": full_text,
-                "parsed_ranking": parsed
+                "parsed_ranking": parsed,
+                "usage": response.get("usage", empty_usage_summary()),
             })
 
     return stage2_results, label_to_model
@@ -165,12 +230,14 @@ Provide a clear, well-reasoned final answer that represents the council's collec
         # Fallback if chairman fails
         return {
             "model": CHAIRMAN_MODEL,
-            "response": "Error: Unable to generate final synthesis."
+            "response": "Error: Unable to generate final synthesis.",
+            "usage": empty_usage_summary(),
         }
 
     return {
         "model": CHAIRMAN_MODEL,
-        "response": response.get('content', '')
+        "response": response.get('content', ''),
+        "usage": response.get("usage", empty_usage_summary()),
     }
 
 
@@ -255,7 +322,7 @@ def calculate_aggregate_rankings(
     return aggregate
 
 
-async def generate_conversation_title(user_query: str) -> str:
+async def generate_conversation_title(user_query: str) -> Dict[str, Any]:
     """
     Generate a short title for a conversation based on the first user message.
 
@@ -263,7 +330,7 @@ async def generate_conversation_title(user_query: str) -> str:
         user_query: The first user message
 
     Returns:
-        A short title (3-5 words)
+        Dict with title and usage summary
     """
     title_prompt = f"""Generate a very short title (3-5 words maximum) that summarizes the following question.
 The title should be concise and descriptive. Do not use quotes or punctuation in the title.
@@ -279,7 +346,10 @@ Title:"""
 
     if response is None:
         # Fallback to a generic title
-        return "New Conversation"
+        return {
+            "title": "New Conversation",
+            "usage": empty_usage_summary(),
+        }
 
     title = response.get('content', 'New Conversation').strip()
 
@@ -290,7 +360,10 @@ Title:"""
     if len(title) > 50:
         title = title[:47] + "..."
 
-    return title
+    return {
+        "title": title,
+        "usage": response.get("usage", empty_usage_summary()),
+    }
 
 
 async def run_full_council(user_query: str) -> Tuple[List, List, Dict, Dict]:
@@ -329,7 +402,8 @@ async def run_full_council(user_query: str) -> Tuple[List, List, Dict, Dict]:
     # Prepare metadata
     metadata = {
         "label_to_model": label_to_model,
-        "aggregate_rankings": aggregate_rankings
+        "aggregate_rankings": aggregate_rankings,
+        "usage": summarize_council_usage(stage1_results, stage2_results, stage3_result),
     }
 
     return stage1_results, stage2_results, stage3_result, metadata

@@ -115,7 +115,24 @@
   color: #888;
   font-size: 12px;
   font-family: monospace;
+}
+
+.ranking-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   margin-bottom: 12px;
+}
+
+.usage-pill {
+  font-size: 12px;
+  color: #1f3b66;
+  background: #eaf2ff;
+  border: 1px solid #c8dbff;
+  border-radius: 999px;
+  padding: 4px 10px;
+  white-space: nowrap;
 }
 
 .ranking-content {

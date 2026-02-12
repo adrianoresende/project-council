@@ -1,7 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
-import Sidebar from './components/Sidebar';
-import ChatInterface from './components/ChatInterface';
-import AuthScreen from './components/AuthScreen';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import AccountAccessPage from './pages/account/page';
+import ChatPage from './pages/home/page';
 import { api } from './api';
 import './App.css';
 
@@ -9,15 +8,31 @@ function App() {
   const [user, setUser] = useState(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [conversations, setConversations] = useState([]);
+  const [pendingConversationLoads, setPendingConversationLoads] = useState(0);
+  const [conversationListTab, setConversationListTab] = useState('chats');
+  const [credits, setCredits] = useState(0);
+  const [isAddingCredits, setIsAddingCredits] = useState(false);
+  const [accountMessage, setAccountMessage] = useState('');
   const [currentConversationId, setCurrentConversationId] = useState(null);
   const [currentConversation, setCurrentConversation] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const latestConversationRequestRef = useRef(0);
+  const conversationListCacheRef = useRef({
+    chats: null,
+    arquived: null,
+  });
 
   const clearChatState = useCallback(() => {
     setConversations([]);
+    setPendingConversationLoads(0);
+    setConversationListTab('chats');
+    setCredits(0);
+    setIsAddingCredits(false);
+    setAccountMessage('');
     setCurrentConversationId(null);
     setCurrentConversation(null);
     setIsLoading(false);
+    conversationListCacheRef.current = { chats: null, arquived: null };
   }, []);
 
   const handleUnauthorized = useCallback(() => {
@@ -26,9 +41,28 @@ function App() {
     clearChatState();
   }, [clearChatState]);
 
-  const loadConversations = useCallback(async () => {
+  const loadConversations = useCallback(async ({
+    force = false,
+    tab = conversationListTab,
+  } = {}) => {
+    if (!force) {
+      const cached = conversationListCacheRef.current[tab];
+      if (Array.isArray(cached)) {
+        setConversations(cached);
+        return;
+      }
+    }
+
+    const archived = tab === 'arquived';
+    const requestId = latestConversationRequestRef.current + 1;
+    latestConversationRequestRef.current = requestId;
+    setPendingConversationLoads((count) => count + 1);
     try {
-      const convs = await api.listConversations();
+      const convs = await api.listConversations(archived);
+      if (latestConversationRequestRef.current !== requestId) {
+        return;
+      }
+      conversationListCacheRef.current[tab] = convs;
       setConversations(convs);
     } catch (error) {
       if (error.status === 401) {
@@ -36,6 +70,21 @@ function App() {
         return;
       }
       console.error('Failed to load conversations:', error);
+    } finally {
+      setPendingConversationLoads((count) => Math.max(0, count - 1));
+    }
+  }, [conversationListTab, handleUnauthorized]);
+
+  const loadCredits = useCallback(async () => {
+    try {
+      const data = await api.getCredits();
+      setCredits(data.credits ?? 0);
+    } catch (error) {
+      if (error.status === 401) {
+        handleUnauthorized();
+        return;
+      }
+      console.error('Failed to load credits:', error);
     }
   }, [handleUnauthorized]);
 
@@ -63,7 +112,7 @@ function App() {
       try {
         const currentUser = await api.getCurrentUser();
         setUser(currentUser);
-        await loadConversations();
+        await Promise.all([loadConversations(), loadCredits()]);
       } catch {
         handleUnauthorized();
       } finally {
@@ -72,7 +121,7 @@ function App() {
     };
 
     bootstrapSession();
-  }, [handleUnauthorized, loadConversations]);
+  }, [handleUnauthorized, loadConversations, loadCredits]);
 
   useEffect(() => {
     if (user && currentConversationId) {
@@ -80,10 +129,16 @@ function App() {
     }
   }, [user, currentConversationId, loadConversation]);
 
+  useEffect(() => {
+    if (user) {
+      loadConversations();
+    }
+  }, [user, conversationListTab, loadConversations]);
+
   const handleAuthenticated = async (authenticatedUser) => {
     setUser(authenticatedUser);
     clearChatState();
-    await loadConversations();
+    await Promise.all([loadConversations(), loadCredits()]);
   };
 
   const handleLogout = () => {
@@ -91,12 +146,29 @@ function App() {
   };
 
   const handleNewConversation = async () => {
+    setAccountMessage('');
     try {
       const newConv = await api.createConversation();
-      setConversations((prev) => [
-        { id: newConv.id, created_at: newConv.created_at, message_count: 0, title: newConv.title },
-        ...prev,
-      ]);
+      const conversationSummary = {
+        id: newConv.id,
+        created_at: newConv.created_at,
+        archived: false,
+        message_count: 0,
+        title: newConv.title,
+      };
+
+      const chatsCache = conversationListCacheRef.current.chats;
+      if (Array.isArray(chatsCache)) {
+        conversationListCacheRef.current.chats = [conversationSummary, ...chatsCache];
+      }
+
+      if (conversationListTab === 'chats') {
+        setConversations((prev) => [
+          conversationSummary,
+          ...prev,
+        ]);
+        loadConversations({ force: true });
+      }
       setCurrentConversationId(newConv.id);
     } catch (error) {
       if (error.status === 401) {
@@ -107,9 +179,62 @@ function App() {
     }
   };
 
+  const handleAddCredits = async (amount) => {
+    setIsAddingCredits(true);
+    setAccountMessage('');
+    try {
+      const response = await api.addCredits(amount);
+      setCredits(response.credits ?? 0);
+    } catch (error) {
+      if (error.status === 401) {
+        handleUnauthorized();
+        return;
+      }
+      setAccountMessage(error.message || 'Failed to add credits.');
+    } finally {
+      setIsAddingCredits(false);
+    }
+  };
+
   const handleSelectConversation = (id) => {
     setCurrentConversationId(id);
   };
+
+  const handleChangeConversationTab = (tab) => {
+    if (tab === conversationListTab) {
+      return;
+    }
+    latestConversationRequestRef.current += 1;
+    const cached = conversationListCacheRef.current[tab];
+    if (Array.isArray(cached)) {
+      setConversations(cached);
+    } else {
+      setConversations([]);
+    }
+    setConversationListTab(tab);
+    setCurrentConversationId(null);
+    setCurrentConversation(null);
+  };
+
+  const handleArchiveConversation = async (conversationId, archived) => {
+    try {
+      await api.setConversationArchived(conversationId, archived);
+      conversationListCacheRef.current = { chats: null, arquived: null };
+      if (currentConversationId === conversationId) {
+        setCurrentConversationId(null);
+        setCurrentConversation(null);
+      }
+      await loadConversations({ force: true });
+    } catch (error) {
+      if (error.status === 401) {
+        handleUnauthorized();
+        return;
+      }
+      console.error('Failed to update conversation archive state:', error);
+    }
+  };
+
+  const isConversationsLoading = pendingConversationLoads > 0;
 
   const handleSendMessage = async (content) => {
     if (!currentConversationId) return;
@@ -201,11 +326,28 @@ function App() {
             break;
 
           case 'title_complete':
-            loadConversations();
+            conversationListCacheRef.current[conversationListTab] = null;
+            loadConversations({ force: true });
             break;
 
           case 'complete':
-            loadConversations();
+            setCurrentConversation((prev) => {
+              if (!prev) return prev;
+              const messages = [...prev.messages];
+              const lastMsg = messages[messages.length - 1];
+              if (lastMsg?.role === 'assistant' && event.metadata) {
+                lastMsg.metadata = event.metadata;
+              }
+              return {
+                ...prev,
+                messages,
+                usage: event.conversation_usage ?? prev.usage,
+              };
+            });
+            loadCredits();
+            loadConversation(currentConversationId);
+            conversationListCacheRef.current[conversationListTab] = null;
+            loadConversations({ force: true });
             setIsLoading(false);
             break;
 
@@ -222,6 +364,10 @@ function App() {
       if (error.status === 401) {
         handleUnauthorized();
         return;
+      }
+      if (error.status === 402) {
+        setAccountMessage(error.message || 'Insufficient credits.');
+        loadCredits();
       }
 
       console.error('Failed to send message:', error);
@@ -242,25 +388,30 @@ function App() {
   }
 
   if (!user) {
-    return <AuthScreen onAuthenticated={handleAuthenticated} />;
+    return <AccountAccessPage onAuthenticated={handleAuthenticated} />;
   }
 
   return (
-    <div className="app">
-      <Sidebar
-        conversations={conversations}
-        currentConversationId={currentConversationId}
-        onSelectConversation={handleSelectConversation}
-        onNewConversation={handleNewConversation}
-        userEmail={user.email}
-        onLogout={handleLogout}
-      />
-      <ChatInterface
-        conversation={currentConversation}
-        onSendMessage={handleSendMessage}
-        isLoading={isLoading}
-      />
-    </div>
+    <ChatPage
+      conversations={conversations}
+      isConversationsLoading={isConversationsLoading}
+      conversationListTab={conversationListTab}
+      onChangeConversationTab={handleChangeConversationTab}
+      onArchiveConversation={handleArchiveConversation}
+      currentConversationId={currentConversationId}
+      onSelectConversation={handleSelectConversation}
+      onNewConversation={handleNewConversation}
+      canCreateConversation={true}
+      credits={credits}
+      onAddCredits={handleAddCredits}
+      isAddingCredits={isAddingCredits}
+      accountMessage={accountMessage}
+      userEmail={user.email}
+      onLogout={handleLogout}
+      conversation={currentConversation}
+      onSendMessage={handleSendMessage}
+      isLoading={isLoading}
+    />
   );
 }
 

@@ -1,6 +1,20 @@
 import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import './Stage2.css';
+import './stage-2.css';
+
+function formatUsage(usage) {
+  if (!usage || typeof usage !== 'object') return null;
+
+  const totalTokens = Number(usage.total_tokens ?? 0);
+  const cost = Number(usage.cost ?? usage.total_cost ?? 0);
+  const parts = [`${totalTokens.toLocaleString()} tokens`];
+
+  if (Number.isFinite(cost) && cost > 0) {
+    parts.push(`$${cost.toFixed(6)}`);
+  }
+
+  return parts.join(' · ');
+}
 
 function deAnonymizeText(text, labelToModel) {
   if (!labelToModel) return text;
@@ -44,8 +58,13 @@ export default function Stage2({ rankings, labelToModel, aggregateRankings }) {
       </div>
 
       <div className="tab-content">
-        <div className="ranking-model">
-          {rankings[activeTab].model}
+        <div className="ranking-header">
+          <div className="ranking-model">
+            {rankings[activeTab].model}
+          </div>
+          <div className="usage-pill">
+            {formatUsage(rankings[activeTab].usage)}
+          </div>
         </div>
         <div className="ranking-content markdown-content">
           <ReactMarkdown>

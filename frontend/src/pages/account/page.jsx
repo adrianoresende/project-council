@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { api } from '../api';
-import './AuthScreen.css';
+import { api } from '../../api';
+import './page.css';
 
-export default function AuthScreen({ onAuthenticated }) {
+export default function AccountAccessPage({ onAuthenticated }) {
   const [mode, setMode] = useState('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

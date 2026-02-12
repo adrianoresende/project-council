@@ -88,11 +88,22 @@ export const api = {
     return data.user;
   },
 
+  async getCredits() {
+    return request('/api/account/credits');
+  },
+
+  async addCredits(amount) {
+    return request('/api/account/credits/add', {
+      method: 'POST',
+      body: JSON.stringify({ amount }),
+    });
+  },
+
   /**
    * List all conversations.
    */
-  async listConversations() {
-    return request('/api/conversations');
+  async listConversations(archived = false) {
+    return request(`/api/conversations?archived=${archived ? 'true' : 'false'}`);
   },
 
   /**
@@ -110,6 +121,16 @@ export const api = {
    */
   async getConversation(conversationId) {
     return request(`/api/conversations/${conversationId}`);
+  },
+
+  /**
+   * Archive/unarchive a conversation.
+   */
+  async setConversationArchived(conversationId, archived = true) {
+    return request(`/api/conversations/${conversationId}/archive`, {
+      method: 'PATCH',
+      body: JSON.stringify({ archived }),
+    });
   },
 
   /**

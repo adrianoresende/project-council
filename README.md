@@ -51,10 +51,36 @@ Keep `SUPABASE_API_KEY_SECRET` server-side only. Do not expose it in frontend en
 Run the SQL in `backend/supabase_schema.sql` inside your Supabase project (SQL Editor).
 
 This creates the `conversations` and `messages` tables, indexes, and Row Level Security policies so users can only access their own rows.
+It also creates `account_credits` and credit RPC functions used by the app.
 
 ### 4. Configure Models (Optional)
 
-Edit `backend/config.py` to customize the council:
+Set `COUNCIL_ENV` in `.env` to choose the model set:
+
+```bash
+COUNCIL_ENV=development
+```
+
+Supported values:
+- `development` / `dev` / `local` uses:
+  - `openai/gpt-5-nano`
+  - `x-ai/grok-4-fast`
+  - `google/gemini-2.5-flash-lite`
+  - `anthropic/claude-3-haiku`
+  - `x-ai/grok-4.1-fast`
+- `production` (default) uses:
+  - `openai/gpt-5.1`
+  - `google/gemini-3-pro-preview`
+  - `anthropic/claude-sonnet-4.5`
+  - `x-ai/grok-4`
+
+You can still force a specific chairman model with:
+
+```bash
+CHAIRMAN_MODEL=openai/gpt-5.1
+```
+
+Or edit `backend/config.py` directly:
 
 ```python
 COUNCIL_MODELS = [
@@ -88,6 +114,13 @@ npm run dev
 ```
 
 Then open http://localhost:5173 in your browser.
+
+## Credits
+
+- Each sent question consumes `1` credit.
+- You can create conversations without spending credits.
+- If your balance is `0`, sending a message will fail until you add credits.
+- Add credits from the sidebar "Add Credit" action.
 
 ## Tech Stack
 

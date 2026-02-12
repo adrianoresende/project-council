@@ -12,6 +12,16 @@
   padding: 24px;
 }
 
+.conversation-usage-banner {
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  border: 1px solid #cfe0ff;
+  border-radius: 8px;
+  background: #f4f8ff;
+  color: #28477e;
+  font-size: 13px;
+}
+
 .empty-state {
   display: flex;
   flex-direction: column;
@@ -49,6 +59,12 @@
   margin-bottom: 8px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+}
+
+.message-usage {
+  margin-bottom: 12px;
+  color: #64748b;
+  font-size: 12px;
 }
 
 .user-message .message-content {

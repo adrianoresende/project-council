@@ -1,9 +1,28 @@
 import { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
-import Stage1 from './Stage1';
-import Stage2 from './Stage2';
-import Stage3 from './Stage3';
-import './ChatInterface.css';
+import Stage1 from '../stage-1/stage-1';
+import Stage2 from '../stage-2/stage-2';
+import Stage3 from '../stage-3/stage-3';
+import './chat-interface.css';
+
+function formatUsageSummary(usage) {
+  if (!usage || typeof usage !== 'object') return null;
+
+  const totalTokens = Number(usage.total_tokens ?? 0);
+  const totalCost = Number(usage.total_cost ?? usage.cost ?? 0);
+  const modelCalls = Number(usage.model_calls ?? 0);
+  const parts = [`${totalTokens.toLocaleString()} tokens`];
+
+  if (Number.isFinite(totalCost) && totalCost > 0) {
+    parts.push(`$${totalCost.toFixed(6)}`);
+  }
+
+  if (Number.isFinite(modelCalls) && modelCalls > 0) {
+    parts.push(`${modelCalls} model calls`);
+  }
+
+  return parts.join(' · ');
+}
 
 export default function ChatInterface({
   conversation,
@@ -51,6 +70,12 @@ export default function ChatInterface({
   return (
     <div className="chat-interface">
       <div className="messages-container">
+        {conversation.usage && (
+          <div className="conversation-usage-banner">
+            Conversation usage: {formatUsageSummary(conversation.usage)}
+          </div>
+        )}
+
         {conversation.messages.length === 0 ? (
           <div className="empty-state">
             <h2>Start a conversation</h2>
@@ -71,6 +96,11 @@ export default function ChatInterface({
               ) : (
                 <div className="assistant-message">
                   <div className="message-label">LLM Council</div>
+                  {msg.metadata?.usage && (
+                    <div className="message-usage">
+                      Turn usage: {formatUsageSummary(msg.metadata.usage)}
+                    </div>
+                  )}
 
                   {/* Stage 1 */}
                   {msg.loading?.stage1 && (

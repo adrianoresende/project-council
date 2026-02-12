@@ -1,10 +1,10 @@
 """FastAPI backend for LLM Council."""
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Dict, Any
 import uuid
 import json
@@ -12,7 +12,16 @@ import asyncio
 
 from . import storage
 from .auth import get_user_from_token, login_user, register_user
-from .council import run_full_council, generate_conversation_title, stage1_collect_responses, stage2_collect_rankings, stage3_synthesize_final, calculate_aggregate_rankings
+from .council import (
+    run_full_council,
+    generate_conversation_title,
+    stage1_collect_responses,
+    stage2_collect_rankings,
+    stage3_synthesize_final,
+    calculate_aggregate_rankings,
+    summarize_council_usage,
+    empty_usage_summary,
+)
 
 app = FastAPI(title="LLM Council API")
 bearer_scheme = HTTPBearer()
@@ -42,7 +51,9 @@ class ConversationMetadata(BaseModel):
     id: str
     created_at: str
     title: str
+    archived: bool = False
     message_count: int
+    usage: Dict[str, Any] = Field(default_factory=dict)
 
 
 class Conversation(BaseModel):
@@ -50,7 +61,9 @@ class Conversation(BaseModel):
     id: str
     created_at: str
     title: str
+    archived: bool = False
     messages: List[Dict[str, Any]]
+    usage: Dict[str, Any] = Field(default_factory=dict)
 
 
 class AuthRequest(BaseModel):
@@ -64,6 +77,21 @@ class AuthResponse(BaseModel):
     access_token: str | None
     user: Dict[str, Any]
     requires_email_confirmation: bool = False
+
+
+class AddCreditsRequest(BaseModel):
+    """Request payload for adding credits."""
+    amount: int = Field(gt=0, le=100000)
+
+
+class CreditsResponse(BaseModel):
+    """Current credit balance for the authenticated account."""
+    credits: int
+
+
+class ArchiveConversationRequest(BaseModel):
+    """Request payload for updating archived state."""
+    archived: bool = True
 
 
 @app.get("/")
@@ -116,10 +144,34 @@ async def me(user: Dict[str, Any] = Depends(get_current_user)):
     return {"user": user}
 
 
+@app.get("/api/account/credits", response_model=CreditsResponse)
+async def get_credits(user: Dict[str, Any] = Depends(get_current_user)):
+    """Get current account credits for the logged in user."""
+    credits = await storage.get_account_credits(user["id"])
+    return {"credits": credits}
+
+
+@app.post("/api/account/credits/add", response_model=CreditsResponse)
+async def add_credits(
+    request: AddCreditsRequest,
+    user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Add credits to the logged in user account."""
+    try:
+        credits = await storage.add_account_credits(user["id"], request.amount)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+    return {"credits": credits}
+
+
 @app.get("/api/conversations", response_model=List[ConversationMetadata])
-async def list_conversations(user: Dict[str, Any] = Depends(get_current_user)):
+async def list_conversations(
+    archived: bool = Query(default=False),
+    user: Dict[str, Any] = Depends(get_current_user),
+):
     """List all conversations (metadata only)."""
-    return await storage.list_conversations(user["id"])
+    return await storage.list_conversations(user["id"], archived=archived)
 
 
 @app.post("/api/conversations", response_model=Conversation)
@@ -143,6 +195,25 @@ async def get_conversation(
     return conversation
 
 
+@app.patch("/api/conversations/{conversation_id}/archive")
+async def archive_conversation(
+    conversation_id: str,
+    request: ArchiveConversationRequest,
+    user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Archive/unarchive a conversation owned by the authenticated user."""
+    try:
+        await storage.update_conversation_archived(
+            conversation_id,
+            user["id"],
+            request.archived,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+    return {"id": conversation_id, "archived": request.archived}
+
+
 @app.post("/api/conversations/{conversation_id}/message")
 async def send_message(
     conversation_id: str,
@@ -159,18 +230,41 @@ async def send_message(
     # Check if this is the first message
     is_first_message = len(conversation["messages"]) == 0
 
+    # Consume one credit for each user question
+    try:
+        await storage.consume_account_credit(user["id"])
+    except ValueError as error:
+        raise HTTPException(status_code=402, detail=str(error)) from error
+
     # Add user message
     await storage.add_user_message(conversation_id, user["id"], request.content)
 
     # If this is the first message, generate a title
+    title_usage = empty_usage_summary()
     if is_first_message:
-        title = await generate_conversation_title(request.content)
+        title_result = await generate_conversation_title(request.content)
+        title = title_result.get("title", "New Conversation")
+        title_usage = title_result.get("usage", empty_usage_summary())
         await storage.update_conversation_title(conversation_id, user["id"], title)
 
     # Run the 3-stage council process
     stage1_results, stage2_results, stage3_result, metadata = await run_full_council(
         request.content
     )
+    if is_first_message:
+        metadata["title_usage"] = title_usage
+        metadata_usage = metadata.get("usage", empty_usage_summary())
+        metadata["usage"] = {
+            "input_tokens": int(metadata_usage.get("input_tokens", 0)) + int(title_usage.get("input_tokens", 0)),
+            "output_tokens": int(metadata_usage.get("output_tokens", 0)) + int(title_usage.get("output_tokens", 0)),
+            "total_tokens": int(metadata_usage.get("total_tokens", 0)) + int(title_usage.get("total_tokens", 0)),
+            "total_cost": round(
+                float(metadata_usage.get("total_cost", 0.0)) + float(title_usage.get("cost", 0.0) or 0.0),
+                8,
+            ),
+            "model_calls": int(metadata_usage.get("model_calls", 0)) + 1,
+        }
+        stage3_result["title_usage"] = title_usage
 
     # Add assistant message with all stages
     await storage.add_assistant_message(
@@ -180,13 +274,15 @@ async def send_message(
         stage2_results,
         stage3_result
     )
+    updated_conversation = await storage.get_conversation(conversation_id, user["id"])
 
     # Return the complete response with metadata
     return {
         "stage1": stage1_results,
         "stage2": stage2_results,
         "stage3": stage3_result,
-        "metadata": metadata
+        "metadata": metadata,
+        "conversation_usage": (updated_conversation or {}).get("usage", empty_usage_summary()),
     }
 
 
@@ -205,6 +301,12 @@ async def send_message_stream(
 
     # Check if this is the first message
     is_first_message = len(conversation["messages"]) == 0
+
+    # Consume one credit for each user question
+    try:
+        await storage.consume_account_credit(user["id"])
+    except ValueError as error:
+        raise HTTPException(status_code=402, detail=str(error)) from error
 
     async def event_generator():
         try:
@@ -232,11 +334,32 @@ async def send_message_stream(
             stage3_result = await stage3_synthesize_final(request.content, stage1_results, stage2_results)
             yield f"data: {json.dumps({'type': 'stage3_complete', 'data': stage3_result})}\n\n"
 
+            metadata = {
+                "label_to_model": label_to_model,
+                "aggregate_rankings": aggregate_rankings,
+                "usage": summarize_council_usage(stage1_results, stage2_results, stage3_result),
+            }
+
             # Wait for title generation if it was started
             if title_task:
-                title = await title_task
+                title_result = await title_task
+                title = title_result.get("title", "New Conversation")
+                title_usage = title_result.get("usage", empty_usage_summary())
                 await storage.update_conversation_title(conversation_id, user["id"], title)
                 yield f"data: {json.dumps({'type': 'title_complete', 'data': {'title': title}})}\n\n"
+                metadata["title_usage"] = title_usage
+                metadata_usage = metadata.get("usage", empty_usage_summary())
+                metadata["usage"] = {
+                    "input_tokens": int(metadata_usage.get("input_tokens", 0)) + int(title_usage.get("input_tokens", 0)),
+                    "output_tokens": int(metadata_usage.get("output_tokens", 0)) + int(title_usage.get("output_tokens", 0)),
+                    "total_tokens": int(metadata_usage.get("total_tokens", 0)) + int(title_usage.get("total_tokens", 0)),
+                    "total_cost": round(
+                        float(metadata_usage.get("total_cost", 0.0)) + float(title_usage.get("cost", 0.0) or 0.0),
+                        8,
+                    ),
+                    "model_calls": int(metadata_usage.get("model_calls", 0)) + 1,
+                }
+                stage3_result["title_usage"] = title_usage
 
             # Save complete assistant message
             await storage.add_assistant_message(
@@ -246,9 +369,10 @@ async def send_message_stream(
                 stage2_results,
                 stage3_result
             )
+            updated_conversation = await storage.get_conversation(conversation_id, user["id"])
 
             # Send completion event
-            yield f"data: {json.dumps({'type': 'complete'})}\n\n"
+            yield f"data: {json.dumps({'type': 'complete', 'metadata': metadata, 'conversation_usage': (updated_conversation or {}).get('usage', empty_usage_summary())})}\n\n"
 
         except Exception as e:
             # Send error event

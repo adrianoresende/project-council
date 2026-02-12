@@ -5,6 +5,54 @@ from typing import List, Dict, Any, Optional
 from .config import OPENROUTER_API_KEY, OPENROUTER_API_URL
 
 
+def _to_int(value: Any) -> int:
+    """Convert a value to int, returning 0 when conversion is not possible."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _to_float(value: Any) -> Optional[float]:
+    """Convert a value to float, returning None when conversion is not possible."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _normalize_usage(raw_usage: Any) -> Dict[str, Any]:
+    """
+    Normalize usage payloads across OpenRouter/OpenAI-compatible key variants.
+
+    Returns:
+        Dict with input_tokens, output_tokens, total_tokens, and cost.
+    """
+    usage = raw_usage if isinstance(raw_usage, dict) else {}
+
+    input_tokens = _to_int(usage.get("input_tokens", usage.get("prompt_tokens")))
+    output_tokens = _to_int(
+        usage.get("output_tokens", usage.get("completion_tokens"))
+    )
+    total_tokens = _to_int(usage.get("total_tokens"))
+    if total_tokens <= 0:
+        total_tokens = input_tokens + output_tokens
+
+    cost: Optional[float] = None
+    for key in ("cost", "total_cost"):
+        parsed = _to_float(usage.get(key))
+        if parsed is not None:
+            cost = parsed
+            break
+
+    return {
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": total_tokens,
+        "cost": cost,
+    }
+
+
 async def query_model(
     model: str,
     messages: List[Dict[str, str]],
@@ -42,10 +90,12 @@ async def query_model(
 
             data = response.json()
             message = data['choices'][0]['message']
+            usage = _normalize_usage(data.get("usage"))
 
             return {
                 'content': message.get('content'),
-                'reasoning_details': message.get('reasoning_details')
+                'reasoning_details': message.get('reasoning_details'),
+                'usage': usage,
             }
 
     except Exception as e:
