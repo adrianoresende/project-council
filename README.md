@@ -40,18 +40,22 @@ Create a `.env` file in the project root:
 OPENROUTER_API_KEY=sk-or-v1-...
 SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
 SUPABASE_API_KEY_SECRET=sb_secret_...
+STRIPE_API_KEY_SECRET=sk_test_...
+STRIPE_API_KEY_PUBLIC=pk_test_...
+STRIPE_WEBHOOK_SECRET=whsec_...
 ```
 
 Get your API key at [openrouter.ai](https://openrouter.ai/). Make sure to purchase the credits you need, or sign up for automatic top up.
 Get your Supabase values in **Project Settings -> API**.
 Keep `SUPABASE_API_KEY_SECRET` server-side only. Do not expose it in frontend env files.
+Configure Stripe webhooks to `POST /api/billing/webhook` so successful checkouts upgrade the user plan.
 
 ### 3. Create Supabase Database Tables
 
 Run the SQL in `backend/supabase_schema.sql` inside your Supabase project (SQL Editor).
 
 This creates the `conversations` and `messages` tables, indexes, and Row Level Security policies so users can only access their own rows.
-It also creates `account_credits` and credit RPC functions used by the app.
+It also creates `account_credits`, `billing_payments`, and credit RPC functions used by the app.
 
 ### 4. Configure Models (Optional)
 
@@ -121,6 +125,19 @@ Then open http://localhost:5173 in your browser.
 - You can create conversations without spending credits.
 - If your balance is `0`, sending a message will fail until you add credits.
 - Add credits from the sidebar "Add Credit" action.
+
+## Pricing
+
+- The app now includes a dedicated **Pricing** page.
+- Available plans:
+  - **Free**
+  - **Pro**: `R$90` per month (Stripe Checkout)
+- Processed Stripe sessions are persisted in `billing_payments`, linked to `user_id`, so it is easy to audit which account had which payment processed.
+- Example audit query:
+  - `select * from public.billing_payments where user_id = 'ACCOUNT_UUID' order by processed_at desc;`
+- Direct URLs:
+  - `http://localhost:5173/pricing`
+  - `http://localhost:5173/account`
 
 ## Tech Stack
 

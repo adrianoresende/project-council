@@ -52,3 +52,11 @@ CHAIRMAN_MODEL = os.getenv("CHAIRMAN_MODEL") or DEFAULT_CHAIRMAN_MODEL
 
 # OpenRouter API endpoint
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+# Stripe configuration
+STRIPE_SECRET_KEY = os.getenv("STRIPE_API_KEY_SECRET")
+STRIPE_PUBLIC_KEY = os.getenv("STRIPE_API_KEY_PUBLIC")
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
+
+# Pricing (BRL cents)
+PRO_PLAN_PRICE_BRL_CENTS = 9000

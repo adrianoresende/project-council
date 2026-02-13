@@ -1,17 +1,28 @@
 """FastAPI backend for LLM Council."""
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any
+from datetime import datetime, timezone
 import uuid
 import json
 import asyncio
+import hashlib
+import hmac
+import time
+from urllib.parse import urlparse
+import httpx
 
 from . import storage
-from .auth import get_user_from_token, login_user, register_user
+from .auth import (
+    get_user_from_token,
+    login_user,
+    register_user,
+    update_user_plan_metadata,
+)
 from .council import (
     run_full_council,
     generate_conversation_title,
@@ -21,6 +32,13 @@ from .council import (
     calculate_aggregate_rankings,
     summarize_council_usage,
     empty_usage_summary,
+)
+from .config import (
+    STRIPE_SECRET_KEY,
+    STRIPE_PUBLIC_KEY,
+    STRIPE_WEBHOOK_SECRET,
+    PRO_PLAN_PRICE_BRL_CENTS,
+    COUNCIL_ENV,
 )
 
 app = FastAPI(title="LLM Council API")
@@ -89,9 +107,243 @@ class CreditsResponse(BaseModel):
     credits: int
 
 
+class AccountSummaryResponse(BaseModel):
+    """Account summary for profile page."""
+    email: str
+    plan: str
+
+
+class BillingPaymentResponse(BaseModel):
+    """A processed Stripe payment linked to an account."""
+    stripe_checkout_session_id: str
+    plan: str
+    amount_total: int
+    currency: str
+    checkout_status: str
+    payment_status: str
+    stripe_customer_id: str | None = None
+    stripe_subscription_id: str | None = None
+    stripe_payment_intent_id: str | None = None
+    stripe_invoice_id: str | None = None
+    last_event_type: str
+    stripe_event_id: str | None = None
+    paid_at: str | None = None
+    next_payment_at: str | None = None
+    processed_at: str
+    created_at: str
+
+
 class ArchiveConversationRequest(BaseModel):
     """Request payload for updating archived state."""
     archived: bool = True
+
+
+class CreateProCheckoutSessionRequest(BaseModel):
+    """Request payload for Stripe checkout session creation."""
+    success_url: str
+    cancel_url: str
+
+
+class ConfirmCheckoutSessionRequest(BaseModel):
+    """Request payload to confirm a Stripe checkout session."""
+    session_id: str
+
+
+def _is_valid_absolute_url(value: str) -> bool:
+    """Allow only absolute http(s) URLs."""
+    try:
+        parsed = urlparse(value)
+    except Exception:
+        return False
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
+def _extract_checkout_user_id(checkout_session: Dict[str, Any]) -> str | None:
+    """Resolve an app user id from Stripe checkout session payload."""
+    metadata = checkout_session.get("metadata") or {}
+    if not isinstance(metadata, dict):
+        metadata = {}
+
+    user_id = metadata.get("user_id") or checkout_session.get("client_reference_id")
+    if isinstance(user_id, str) and user_id.strip():
+        return user_id.strip()
+    return None
+
+
+def _normalize_plan(value: Any) -> str:
+    """Normalize plan text into accepted values."""
+    if not isinstance(value, str):
+        return "free"
+    normalized = value.strip().lower()
+    if normalized == "pro":
+        return "pro"
+    return "free"
+
+
+def _iso_datetime_from_unix(value: Any) -> str | None:
+    """Convert unix timestamp seconds to ISO datetime (UTC)."""
+    try:
+        timestamp = int(value)
+    except (TypeError, ValueError):
+        return None
+    if timestamp <= 0:
+        return None
+    return datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat()
+
+
+def _verify_stripe_signature(payload: bytes, signature_header: str) -> bool:
+    """Verify Stripe webhook signature with the configured webhook secret."""
+    if not STRIPE_WEBHOOK_SECRET:
+        return COUNCIL_ENV in {"development", "dev", "local"}
+
+    parts = {}
+    for item in signature_header.split(","):
+        if "=" not in item:
+            continue
+        key, value = item.split("=", 1)
+        parts[key.strip()] = value.strip()
+
+    timestamp_text = parts.get("t")
+    signature_v1 = parts.get("v1")
+    if not timestamp_text or not signature_v1:
+        return False
+
+    try:
+        timestamp = int(timestamp_text)
+    except ValueError:
+        return False
+
+    # Stripe recommends a 5-minute tolerance.
+    if abs(int(time.time()) - timestamp) > 300:
+        return False
+
+    signed_payload = f"{timestamp}.{payload.decode('utf-8')}"
+    expected = hmac.new(
+        STRIPE_WEBHOOK_SECRET.encode("utf-8"),
+        signed_payload.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    return hmac.compare_digest(expected, signature_v1)
+
+
+async def _stripe_request(
+    method: str,
+    path: str,
+    *,
+    data: Dict[str, Any] | None = None,
+    params: Dict[str, Any] | None = None,
+) -> Dict[str, Any]:
+    """Execute an authenticated Stripe API request and return parsed JSON."""
+    if not STRIPE_SECRET_KEY:
+        raise HTTPException(status_code=500, detail="Stripe is not configured on server.")
+
+    url = f"https://api.stripe.com{path}"
+    async with httpx.AsyncClient(timeout=30) as client:
+        response = await client.request(
+            method=method,
+            url=url,
+            data=data,
+            params=params,
+            headers={"Authorization": f"Bearer {STRIPE_SECRET_KEY}"},
+        )
+
+    if response.status_code >= 400:
+        message = "Stripe request failed."
+        try:
+            payload = response.json()
+            message = (
+                payload.get("error", {}).get("message")
+                or payload.get("message")
+                or message
+            )
+        except ValueError:
+            pass
+        raise HTTPException(status_code=502, detail=message)
+
+    try:
+        payload = response.json()
+    except ValueError as error:
+        raise HTTPException(status_code=502, detail="Invalid response from Stripe.") from error
+
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=502, detail="Invalid response shape from Stripe.")
+    return payload
+
+
+async def _link_checkout_session_to_plan(
+    checkout_session: Dict[str, Any],
+    *,
+    event_type: str,
+    stripe_event_id: str | None = None,
+) -> Dict[str, Any]:
+    """Update the account plan based on a Stripe checkout session payload."""
+    user_id = _extract_checkout_user_id(checkout_session)
+    if not user_id:
+        raise HTTPException(status_code=400, detail="Checkout session is missing user mapping.")
+
+    if checkout_session.get("mode") != "subscription":
+        raise HTTPException(status_code=400, detail="Checkout session is not a subscription.")
+
+    status = checkout_session.get("status")
+    if status != "complete":
+        raise HTTPException(status_code=400, detail="Checkout session is not complete.")
+
+    payment_status = checkout_session.get("payment_status")
+    should_activate_pro = payment_status in {"paid", "no_payment_required"}
+
+    subscription_field = checkout_session.get("subscription")
+    stripe_subscription_id = (
+        subscription_field.get("id")
+        if isinstance(subscription_field, dict)
+        else subscription_field
+    )
+    if not isinstance(stripe_subscription_id, str):
+        stripe_subscription_id = None
+
+    customer_field = checkout_session.get("customer")
+    stripe_customer_id = customer_field if isinstance(customer_field, str) else None
+
+    next_payment_at = None
+    if isinstance(subscription_field, dict):
+        next_payment_at = _iso_datetime_from_unix(subscription_field.get("current_period_end"))
+    if not next_payment_at and stripe_subscription_id:
+        try:
+            subscription_payload = await _stripe_request(
+                "GET",
+                f"/v1/subscriptions/{stripe_subscription_id}",
+            )
+            next_payment_at = _iso_datetime_from_unix(
+                subscription_payload.get("current_period_end")
+            )
+        except HTTPException:
+            next_payment_at = None
+
+    target_plan = "pro" if should_activate_pro else "free"
+    await update_user_plan_metadata(
+        user_id,
+        target_plan,
+        stripe_customer_id=stripe_customer_id,
+        stripe_subscription_id=stripe_subscription_id,
+    )
+
+    await storage.upsert_billing_payment(
+        user_id,
+        checkout_session,
+        event_type=event_type,
+        stripe_event_id=stripe_event_id,
+        paid_at=(
+            datetime.now(timezone.utc).isoformat()
+            if should_activate_pro
+            else None
+        ),
+        next_payment_at=next_payment_at,
+    )
+
+    return {
+        "user_id": user_id,
+        "plan": target_plan,
+        "payment_status": payment_status or "unknown",
+    }
 
 
 @app.get("/")
@@ -144,11 +396,178 @@ async def me(user: Dict[str, Any] = Depends(get_current_user)):
     return {"user": user}
 
 
+@app.get("/api/billing/config")
+async def get_billing_config(user: Dict[str, Any] = Depends(get_current_user)):
+    """Return pricing and Stripe publishable key for the frontend."""
+    return {
+        "stripe_public_key": STRIPE_PUBLIC_KEY or "",
+        "plans": [
+            {"id": "free", "name": "Free", "price_brl": 0},
+            {
+                "id": "pro",
+                "name": "Pro",
+                "price_brl": PRO_PLAN_PRICE_BRL_CENTS // 100,
+                "price_brl_cents": PRO_PLAN_PRICE_BRL_CENTS,
+                "interval": "month",
+            },
+        ],
+    }
+
+
+@app.post("/api/billing/checkout/pro")
+async def create_pro_checkout_session(
+    request: CreateProCheckoutSessionRequest,
+    user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Create a Stripe checkout session for the Pro plan."""
+    if not _is_valid_absolute_url(request.success_url) or not _is_valid_absolute_url(request.cancel_url):
+        raise HTTPException(status_code=400, detail="Invalid success_url or cancel_url.")
+
+    user_email = user.get("email")
+    payload = {
+        "mode": "subscription",
+        "success_url": request.success_url,
+        "cancel_url": request.cancel_url,
+        "payment_method_types[0]": "card",
+        "line_items[0][quantity]": "1",
+        "line_items[0][price_data][currency]": "brl",
+        "line_items[0][price_data][unit_amount]": str(PRO_PLAN_PRICE_BRL_CENTS),
+        "line_items[0][price_data][recurring][interval]": "month",
+        "line_items[0][price_data][product_data][name]": "LLM Council Pro",
+        "line_items[0][price_data][product_data][description]": "Pro monthly plan",
+        "client_reference_id": user["id"],
+        "metadata[user_id]": user["id"],
+        "metadata[plan]": "pro",
+    }
+    if isinstance(user_email, str) and user_email:
+        payload["customer_email"] = user_email
+
+    data = await _stripe_request("POST", "/v1/checkout/sessions", data=payload)
+
+    checkout_url = data.get("url")
+    if not checkout_url:
+        raise HTTPException(status_code=502, detail="Stripe checkout URL not returned.")
+
+    return {
+        "session_id": data.get("id"),
+        "checkout_url": checkout_url,
+    }
+
+
+@app.post("/api/billing/confirm")
+async def confirm_checkout_session(
+    request: ConfirmCheckoutSessionRequest,
+    user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Confirm a Stripe checkout session and link it to current account plan."""
+    session_id = (request.session_id or "").strip()
+    if not session_id:
+        raise HTTPException(status_code=400, detail="session_id is required.")
+
+    checkout_session = await _stripe_request(
+        "GET",
+        f"/v1/checkout/sessions/{session_id}",
+        params={"expand[]": "subscription"},
+    )
+
+    checkout_user_id = _extract_checkout_user_id(checkout_session)
+    if checkout_user_id != user["id"]:
+        raise HTTPException(status_code=403, detail="Checkout session does not belong to this user.")
+
+    result = await _link_checkout_session_to_plan(
+        checkout_session,
+        event_type="checkout.session.confirmed",
+        stripe_event_id=None,
+    )
+    return {
+        "session_id": session_id,
+        "plan": result["plan"],
+        "linked": True,
+    }
+
+
+@app.post("/api/billing/webhook")
+async def stripe_webhook(
+    request: Request,
+    stripe_signature: str | None = Header(default=None, alias="Stripe-Signature"),
+):
+    """Handle Stripe webhook events for payment/account reconciliation."""
+    payload = await request.body()
+    if not payload:
+        raise HTTPException(status_code=400, detail="Missing webhook payload.")
+
+    if STRIPE_WEBHOOK_SECRET and not stripe_signature:
+        raise HTTPException(status_code=400, detail="Missing Stripe-Signature header.")
+
+    if not _verify_stripe_signature(payload, stripe_signature or ""):
+        raise HTTPException(status_code=400, detail="Invalid Stripe signature.")
+
+    try:
+        event = json.loads(payload.decode("utf-8"))
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail="Invalid webhook payload.") from error
+
+    if not isinstance(event, dict):
+        raise HTTPException(status_code=400, detail="Invalid webhook payload shape.")
+
+    event_type = event.get("type")
+    data_object = (event.get("data") or {}).get("object")
+    if not isinstance(data_object, dict):
+        return {"received": True, "ignored": True}
+
+    if event_type == "checkout.session.completed":
+        stripe_event_id = event.get("id")
+        if not isinstance(stripe_event_id, str):
+            stripe_event_id = None
+        try:
+            await _link_checkout_session_to_plan(
+                data_object,
+                event_type=event_type,
+                stripe_event_id=stripe_event_id,
+            )
+        except HTTPException:
+            # Acknowledge webhook to avoid retries on irrecoverable payload mismatch.
+            return {"received": True, "processed": False}
+
+    return {"received": True}
+
+
 @app.get("/api/account/credits", response_model=CreditsResponse)
 async def get_credits(user: Dict[str, Any] = Depends(get_current_user)):
     """Get current account credits for the logged in user."""
     credits = await storage.get_account_credits(user["id"])
     return {"credits": credits}
+
+
+@app.get("/api/account/summary", response_model=AccountSummaryResponse)
+async def get_account_summary(user: Dict[str, Any] = Depends(get_current_user)):
+    """Return basic account summary (email and current plan)."""
+    user_metadata = user.get("user_metadata") or {}
+    app_metadata = user.get("app_metadata") or {}
+    billing_metadata = app_metadata.get("billing") if isinstance(app_metadata, dict) else {}
+    if not isinstance(billing_metadata, dict):
+        billing_metadata = {}
+    plan = (
+        user_metadata.get("plan")
+        or billing_metadata.get("plan")
+        or app_metadata.get("plan")
+        or "free"
+    )
+    normalized_plan = _normalize_plan(plan)
+
+    return {
+        "email": user.get("email", ""),
+        "plan": normalized_plan,
+    }
+
+
+@app.get("/api/account/payments", response_model=List[BillingPaymentResponse])
+async def get_account_payments(
+    limit: int = Query(default=50, ge=1, le=200),
+    user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Return processed Stripe payments linked to the authenticated account."""
+    return await storage.list_billing_payments(user["id"], limit)
 
 
 @app.post("/api/account/credits/add", response_model=CreditsResponse)

@@ -1,7 +1,11 @@
 import Sidebar from '../../components/sidebar/sidebar';
 import ChatInterface from '../../components/chat-interface/chat-interface';
+import PricingPage from '../pricing/page';
+import AccountPage from '../account/account-page';
 
 export default function ChatPage({
+  mainView,
+  onChangeMainView,
   conversations,
   isConversationsLoading,
   conversationListTab,
@@ -16,6 +20,7 @@ export default function ChatPage({
   isAddingCredits,
   accountMessage,
   userEmail,
+  userPlan,
   onLogout,
   conversation,
   onSendMessage,
@@ -24,6 +29,8 @@ export default function ChatPage({
   return (
     <div className="app">
       <Sidebar
+        mainView={mainView}
+        onChangeMainView={onChangeMainView}
         conversations={conversations}
         isConversationsLoading={isConversationsLoading}
         conversationListTab={conversationListTab}
@@ -38,13 +45,20 @@ export default function ChatPage({
         isAddingCredits={isAddingCredits}
         accountMessage={accountMessage}
         userEmail={userEmail}
+        userPlan={userPlan}
         onLogout={onLogout}
       />
-      <ChatInterface
-        conversation={conversation}
-        onSendMessage={onSendMessage}
-        isLoading={isLoading}
-      />
+      {mainView === 'pricing' ? (
+        <PricingPage />
+      ) : mainView === 'account' ? (
+        <AccountPage onGoToPricing={() => onChangeMainView('pricing')} />
+      ) : (
+        <ChatInterface
+          conversation={conversation}
+          onSendMessage={onSendMessage}
+          isLoading={isLoading}
+        />
+      )}
     </div>
   );
 }

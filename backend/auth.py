@@ -41,6 +41,15 @@ def _extract_error_message(payload: Dict[str, Any], fallback: str) -> str:
     )
 
 
+def _admin_headers(api_key: str) -> Dict[str, str]:
+    """Headers for Supabase admin API calls."""
+    return {
+        "apikey": api_key,
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+
 async def register_user(email: str, password: str) -> Dict[str, Any]:
     """Register a Supabase user with email/password."""
     supabase_url, api_key = _ensure_supabase_config()
@@ -112,3 +121,82 @@ async def get_user_from_token(access_token: str) -> Dict[str, Any]:
         raise HTTPException(status_code=401, detail="Invalid or expired session.")
 
     return data
+
+
+async def get_user_by_id_admin(user_id: str) -> Dict[str, Any]:
+    """Fetch a user by id through Supabase admin API."""
+    supabase_url, api_key = _ensure_supabase_config()
+    url = f"{supabase_url}/auth/v1/admin/users/{user_id}"
+
+    async with httpx.AsyncClient(timeout=20) as client:
+        response = await client.get(url, headers=_admin_headers(api_key))
+
+    data = response.json()
+    if response.status_code >= 400:
+        raise HTTPException(
+            status_code=response.status_code,
+            detail=_extract_error_message(data, "Failed to fetch user."),
+        )
+
+    if isinstance(data, dict) and isinstance(data.get("user"), dict):
+        return data["user"]
+    if isinstance(data, dict):
+        return data
+    raise HTTPException(status_code=502, detail="Invalid user payload from Supabase.")
+
+
+async def update_user_plan_metadata(
+    user_id: str,
+    plan: str,
+    *,
+    stripe_customer_id: str | None = None,
+    stripe_subscription_id: str | None = None,
+) -> Dict[str, Any]:
+    """Set account plan metadata for a Supabase auth user."""
+    normalized_plan = (plan or "free").strip().lower()
+    if normalized_plan not in {"free", "pro"}:
+        normalized_plan = "free"
+
+    existing_user = await get_user_by_id_admin(user_id)
+    existing_app_metadata = existing_user.get("app_metadata") or {}
+    if not isinstance(existing_app_metadata, dict):
+        existing_app_metadata = {}
+
+    billing_metadata = existing_app_metadata.get("billing") or {}
+    if not isinstance(billing_metadata, dict):
+        billing_metadata = {}
+
+    billing_metadata["plan"] = normalized_plan
+    if stripe_customer_id:
+        billing_metadata["stripe_customer_id"] = stripe_customer_id
+    if stripe_subscription_id:
+        billing_metadata["stripe_subscription_id"] = stripe_subscription_id
+
+    merged_app_metadata = {
+        **existing_app_metadata,
+        "plan": normalized_plan,
+        "billing": billing_metadata,
+    }
+
+    supabase_url, api_key = _ensure_supabase_config()
+    url = f"{supabase_url}/auth/v1/admin/users/{user_id}"
+
+    async with httpx.AsyncClient(timeout=20) as client:
+        response = await client.put(
+            url,
+            headers=_admin_headers(api_key),
+            json={"app_metadata": merged_app_metadata},
+        )
+
+    data = response.json()
+    if response.status_code >= 400:
+        raise HTTPException(
+            status_code=response.status_code,
+            detail=_extract_error_message(data, "Failed to update user plan."),
+        )
+
+    if isinstance(data, dict) and isinstance(data.get("user"), dict):
+        return data["user"]
+    if isinstance(data, dict):
+        return data
+    raise HTTPException(status_code=502, detail="Invalid user payload from Supabase.")

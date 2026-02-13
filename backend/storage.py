@@ -1,6 +1,7 @@
 """Supabase Postgres storage for conversations."""
 
 from typing import Any, Dict, List, Optional
+from datetime import datetime, timezone
 
 import httpx
 
@@ -21,6 +22,17 @@ def _to_float(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _to_iso_datetime(value: Any) -> str | None:
+    """Best-effort conversion to ISO datetime in UTC."""
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+
+    timestamp = _to_int(value)
+    if timestamp <= 0:
+        return None
+    return datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat()
 
 
 def _empty_usage_summary() -> Dict[str, Any]:
@@ -552,3 +564,123 @@ async def consume_account_credit(user_id: str) -> int:
                 "Insufficient credits. Add credits to send a message."
             ) from error
         raise
+
+
+async def upsert_billing_payment(
+    user_id: str,
+    checkout_session: Dict[str, Any],
+    *,
+    event_type: str,
+    stripe_event_id: str | None = None,
+    paid_at: str | None = None,
+    next_payment_at: str | None = None,
+) -> Dict[str, Any]:
+    """Create or update a billing payment row for a checkout session."""
+    session_id = checkout_session.get("id")
+    if not isinstance(session_id, str) or not session_id.strip():
+        raise RuntimeError("Stripe checkout session id is required to persist billing payment.")
+
+    currency = checkout_session.get("currency")
+    if not isinstance(currency, str):
+        currency = "brl"
+    currency = currency.strip().lower() or "brl"
+
+    customer_id = checkout_session.get("customer")
+    if not isinstance(customer_id, str):
+        customer_id = None
+
+    payment_intent_id = checkout_session.get("payment_intent")
+    if not isinstance(payment_intent_id, str):
+        payment_intent_id = None
+
+    invoice_id = checkout_session.get("invoice")
+    if not isinstance(invoice_id, str):
+        invoice_id = None
+
+    subscription_field = checkout_session.get("subscription")
+    subscription_id = (
+        subscription_field.get("id")
+        if isinstance(subscription_field, dict)
+        else subscription_field
+    )
+    if not isinstance(subscription_id, str):
+        subscription_id = None
+
+    metadata = checkout_session.get("metadata") or {}
+    if not isinstance(metadata, dict):
+        metadata = {}
+    plan = metadata.get("plan")
+    if not isinstance(plan, str) or not plan.strip():
+        plan = "free"
+    normalized_plan = plan.strip().lower()
+    if normalized_plan not in {"free", "pro"}:
+        normalized_plan = "free"
+
+    amount_total = _to_int(checkout_session.get("amount_total"))
+    checkout_status = checkout_session.get("status")
+    if not isinstance(checkout_status, str):
+        checkout_status = "unknown"
+
+    payment_status = checkout_session.get("payment_status")
+    if not isinstance(payment_status, str):
+        payment_status = "unknown"
+
+    normalized_paid_at = paid_at
+    if not normalized_paid_at and payment_status in {"paid", "no_payment_required"}:
+        normalized_paid_at = datetime.now(timezone.utc).isoformat()
+
+    normalized_next_payment_at = next_payment_at
+
+    rows = await _rest_request(
+        "POST",
+        "billing_payments",
+        params={"on_conflict": "stripe_checkout_session_id"},
+        json_body={
+            "stripe_checkout_session_id": session_id,
+            "user_id": user_id,
+            "plan": normalized_plan,
+            "amount_total": amount_total,
+            "currency": currency,
+            "checkout_status": checkout_status,
+            "payment_status": payment_status,
+            "stripe_customer_id": customer_id,
+            "stripe_subscription_id": subscription_id,
+            "stripe_payment_intent_id": payment_intent_id,
+            "stripe_invoice_id": invoice_id,
+            "last_event_type": event_type,
+            "stripe_event_id": stripe_event_id,
+            "paid_at": normalized_paid_at,
+            "next_payment_at": normalized_next_payment_at,
+            "processed_at": datetime.now(timezone.utc).isoformat(),
+            "payload": checkout_session,
+        },
+        prefer="resolution=merge-duplicates,return=representation",
+    )
+
+    if isinstance(rows, list) and rows:
+        return rows[0]
+    return {}
+
+
+async def list_billing_payments(user_id: str, limit: int = 50) -> List[Dict[str, Any]]:
+    """Return recent billing payments for a user."""
+    safe_limit = min(max(limit, 1), 200)
+    rows = await _rest_request(
+        "GET",
+        "billing_payments",
+        params={
+            "select": (
+                "stripe_checkout_session_id,plan,amount_total,currency,checkout_status,"
+                "payment_status,stripe_customer_id,stripe_subscription_id,"
+                "stripe_payment_intent_id,stripe_invoice_id,last_event_type,"
+                "stripe_event_id,paid_at,next_payment_at,processed_at,created_at"
+            ),
+            "user_id": f"eq.{user_id}",
+            "order": "processed_at.desc",
+            "limit": str(safe_limit),
+        },
+    )
+
+    if not isinstance(rows, list):
+        return []
+    return rows

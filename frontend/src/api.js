@@ -92,10 +92,48 @@ export const api = {
     return request('/api/account/credits');
   },
 
+  async getAccountSummary() {
+    return request('/api/account/summary');
+  },
+
+  async getAccountPayments(limit = 20) {
+    return request(`/api/account/payments?limit=${encodeURIComponent(limit)}`);
+  },
+
   async addCredits(amount) {
     return request('/api/account/credits/add', {
       method: 'POST',
       body: JSON.stringify({ amount }),
+    });
+  },
+
+  /**
+   * Get billing configuration and plans.
+   */
+  async getBillingConfig() {
+    return request('/api/billing/config');
+  },
+
+  /**
+   * Create Stripe checkout session for Pro plan.
+   */
+  async createProCheckoutSession(successUrl, cancelUrl) {
+    return request('/api/billing/checkout/pro', {
+      method: 'POST',
+      body: JSON.stringify({
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+      }),
+    });
+  },
+
+  /**
+   * Confirm Stripe checkout session and sync account plan.
+   */
+  async confirmCheckoutSession(sessionId) {
+    return request('/api/billing/confirm', {
+      method: 'POST',
+      body: JSON.stringify({ session_id: sessionId }),
     });
   },
 

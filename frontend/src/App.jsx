@@ -4,9 +4,41 @@ import ChatPage from './pages/home/page';
 import { api } from './api';
 import './App.css';
 
+function getMainViewFromPath(pathname) {
+  if (pathname === '/pricing') return 'pricing';
+  if (pathname === '/account') return 'account';
+  return 'chat';
+}
+
+function getPathFromMainView(view) {
+  if (view === 'pricing') return '/pricing';
+  if (view === 'account') return '/account';
+  return '/';
+}
+
+function normalizePlan(value) {
+  if (typeof value !== 'string') return 'free';
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'pro') return 'pro';
+  return 'free';
+}
+
+function inferPlanFromUser(user) {
+  if (!user) return 'free';
+  return normalizePlan(
+    user?.user_metadata?.plan
+      || user?.app_metadata?.plan
+      || 'free'
+  );
+}
+
 function App() {
   const [user, setUser] = useState(null);
+  const [userPlan, setUserPlan] = useState('free');
   const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [mainView, setMainView] = useState(
+    getMainViewFromPath(window.location.pathname)
+  );
   const [conversations, setConversations] = useState([]);
   const [pendingConversationLoads, setPendingConversationLoads] = useState(0);
   const [conversationListTab, setConversationListTab] = useState('chats');
@@ -38,8 +70,20 @@ function App() {
   const handleUnauthorized = useCallback(() => {
     api.clearAccessToken();
     setUser(null);
+    setUserPlan('free');
     clearChatState();
+    window.history.replaceState({}, '', '/');
+    setMainView('chat');
   }, [clearChatState]);
+
+  useEffect(() => {
+    const onPopState = () => {
+      setMainView(getMainViewFromPath(window.location.pathname));
+    };
+
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
 
   const loadConversations = useCallback(async ({
     force = false,
@@ -88,6 +132,28 @@ function App() {
     }
   }, [handleUnauthorized]);
 
+  const loadAccountSummary = useCallback(async () => {
+    try {
+      const data = await api.getAccountSummary();
+      setUserPlan(normalizePlan(data?.plan));
+    } catch (error) {
+      if (error.status === 401) {
+        handleUnauthorized();
+        return;
+      }
+      console.error('Failed to load account summary:', error);
+    }
+  }, [handleUnauthorized]);
+
+  useEffect(() => {
+    const onPlanUpdated = () => {
+      loadAccountSummary();
+    };
+
+    window.addEventListener('account-plan-updated', onPlanUpdated);
+    return () => window.removeEventListener('account-plan-updated', onPlanUpdated);
+  }, [loadAccountSummary]);
+
   const loadConversation = useCallback(async (id) => {
     try {
       const conv = await api.getConversation(id);
@@ -112,7 +178,8 @@ function App() {
       try {
         const currentUser = await api.getCurrentUser();
         setUser(currentUser);
-        await Promise.all([loadConversations(), loadCredits()]);
+        setUserPlan(inferPlanFromUser(currentUser));
+        await Promise.all([loadConversations(), loadCredits(), loadAccountSummary()]);
       } catch {
         handleUnauthorized();
       } finally {
@@ -121,7 +188,7 @@ function App() {
     };
 
     bootstrapSession();
-  }, [handleUnauthorized, loadConversations, loadCredits]);
+  }, [handleUnauthorized, loadConversations, loadCredits, loadAccountSummary]);
 
   useEffect(() => {
     if (user && currentConversationId) {
@@ -130,15 +197,17 @@ function App() {
   }, [user, currentConversationId, loadConversation]);
 
   useEffect(() => {
-    if (user) {
+    if (user && mainView === 'chat') {
       loadConversations();
     }
-  }, [user, conversationListTab, loadConversations]);
+  }, [user, conversationListTab, mainView, loadConversations]);
 
   const handleAuthenticated = async (authenticatedUser) => {
     setUser(authenticatedUser);
+    setUserPlan(inferPlanFromUser(authenticatedUser));
     clearChatState();
-    await Promise.all([loadConversations(), loadCredits()]);
+    setMainView(getMainViewFromPath(window.location.pathname));
+    await Promise.all([loadConversations(), loadCredits(), loadAccountSummary()]);
   };
 
   const handleLogout = () => {
@@ -149,6 +218,10 @@ function App() {
     setAccountMessage('');
     try {
       const newConv = await api.createConversation();
+      if (mainView !== 'chat') {
+        window.history.pushState({}, '', '/');
+        setMainView('chat');
+      }
       const conversationSummary = {
         id: newConv.id,
         created_at: newConv.created_at,
@@ -197,7 +270,19 @@ function App() {
   };
 
   const handleSelectConversation = (id) => {
+    if (mainView !== 'chat') {
+      window.history.pushState({}, '', '/');
+      setMainView('chat');
+    }
     setCurrentConversationId(id);
+  };
+
+  const handleChangeMainView = (view) => {
+    const path = getPathFromMainView(view);
+    if (window.location.pathname !== path) {
+      window.history.pushState({}, '', path);
+    }
+    setMainView(view);
   };
 
   const handleChangeConversationTab = (tab) => {
@@ -393,6 +478,8 @@ function App() {
 
   return (
     <ChatPage
+      mainView={mainView}
+      onChangeMainView={handleChangeMainView}
       conversations={conversations}
       isConversationsLoading={isConversationsLoading}
       conversationListTab={conversationListTab}
@@ -407,6 +494,7 @@ function App() {
       isAddingCredits={isAddingCredits}
       accountMessage={accountMessage}
       userEmail={user.email}
+      userPlan={userPlan}
       onLogout={handleLogout}
       conversation={currentConversation}
       onSendMessage={handleSendMessage}

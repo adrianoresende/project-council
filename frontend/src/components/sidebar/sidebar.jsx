@@ -12,6 +12,8 @@ function formatConversationDate(value) {
 }
 
 export default function Sidebar({
+  mainView,
+  onChangeMainView,
   conversations,
   isConversationsLoading,
   conversationListTab,
@@ -26,6 +28,7 @@ export default function Sidebar({
   isAddingCredits,
   accountMessage,
   userEmail,
+  userPlan,
   onLogout,
 }) {
   const [creditInput, setCreditInput] = useState('1');
@@ -44,6 +47,29 @@ export default function Sidebar({
     <div className="sidebar">
       <div className="sidebar-header">
         <h1>LLM Council</h1>
+        <div className="sidebar-main-tabs">
+          <button
+            type="button"
+            className={`sidebar-main-tab ${mainView === 'chat' ? 'active' : ''}`}
+            onClick={() => onChangeMainView('chat')}
+          >
+            Chats
+          </button>
+          <button
+            type="button"
+            className={`sidebar-main-tab ${mainView === 'pricing' ? 'active' : ''}`}
+            onClick={() => onChangeMainView('pricing')}
+          >
+            Pricing
+          </button>
+          <button
+            type="button"
+            className={`sidebar-main-tab ${mainView === 'account' ? 'active' : ''}`}
+            onClick={() => onChangeMainView('account')}
+          >
+            Account
+          </button>
+        </div>
         <button
           className="new-conversation-btn"
           onClick={onNewConversation}
@@ -143,9 +169,26 @@ export default function Sidebar({
           {accountMessage && <div className="account-message">{accountMessage}</div>}
         </div>
         <div className="sidebar-user-row">
-          <span className="sidebar-user-email">{userEmail}</span>
+          <div className="sidebar-user-meta">
+            <span className="sidebar-user-email">{userEmail}</span>
+            <span className={`sidebar-user-plan ${userPlan === 'pro' ? 'pro' : 'free'}`}>
+              {(userPlan || 'free').toUpperCase()}
+            </span>
+          </div>
           <button className="logout-btn" onClick={onLogout}>
             Log out
+          </button>
+        </div>
+        <div className="sidebar-billing-row">
+          <span className="sidebar-credits-left">
+            {credits} {credits === 1 ? 'credit' : 'credits'} left
+          </span>
+          <button
+            type="button"
+            className="sidebar-upgrade-link"
+            onClick={() => onChangeMainView('pricing')}
+          >
+            Upgrade
           </button>
         </div>
       </div>
