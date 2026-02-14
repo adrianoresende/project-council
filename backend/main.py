@@ -24,7 +24,6 @@ from .auth import (
     update_user_plan_metadata,
 )
 from .council import (
-    run_full_council,
     generate_conversation_title,
     stage1_collect_responses,
     stage2_collect_rankings,
@@ -830,14 +829,7 @@ async def send_message(
                 status_code=402,
                 detail="Daily query limit has run out. You must wait until tomorrow for renewal.",
             )
-        try:
-            remaining_balance_after = await storage.consume_account_tokens(
-                user["id"],
-                1,
-                FREE_DAILY_QUERY_LIMIT,
-            )
-        except ValueError as error:
-            raise HTTPException(status_code=402, detail=str(error)) from error
+        remaining_balance_after = remaining_queries
 
     # Add user message
     await storage.add_user_message(
@@ -858,12 +850,59 @@ async def send_message(
         title_usage = title_result.get("usage", empty_usage_summary())
         await storage.update_conversation_title(conversation_id, user["id"], title)
 
-    # Run the 3-stage council process
-    stage1_results, stage2_results, stage3_result, metadata = await run_full_council(
+    # Stage 1
+    stage1_results = await stage1_collect_responses(
         request.content,
         conversation_history=conversation_history,
         session_id=conversation_session_id,
     )
+    stage2_results: List[Dict[str, Any]] = []
+    if not stage1_results:
+        stage3_result = {
+            "model": "error",
+            "response": "All models failed to respond. Please try again.",
+            "usage": empty_usage_summary(),
+        }
+        metadata = {
+            "label_to_model": {},
+            "aggregate_rankings": [],
+            "usage": summarize_council_usage(stage1_results, stage2_results, stage3_result),
+        }
+    else:
+        # Free plan: count one query after Stage 1 is complete and before Stage 2 starts.
+        if plan == "free" and is_first_message:
+            try:
+                remaining_balance_after = await storage.consume_account_tokens(
+                    user["id"],
+                    1,
+                    FREE_DAILY_QUERY_LIMIT,
+                )
+            except ValueError as error:
+                raise HTTPException(status_code=402, detail=str(error)) from error
+
+        # Stage 2
+        stage2_results, label_to_model = await stage2_collect_rankings(
+            request.content,
+            stage1_results,
+            conversation_history=conversation_history,
+            session_id=conversation_session_id,
+        )
+        aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
+
+        # Stage 3
+        stage3_result = await stage3_synthesize_final(
+            request.content,
+            stage1_results,
+            stage2_results,
+            conversation_history=conversation_history,
+            session_id=conversation_session_id,
+        )
+        metadata = {
+            "label_to_model": label_to_model,
+            "aggregate_rankings": aggregate_rankings,
+            "usage": summarize_council_usage(stage1_results, stage2_results, stage3_result),
+        }
+
     if is_first_message:
         metadata["title_usage"] = title_usage
         metadata_usage = metadata.get("usage", empty_usage_summary())
@@ -948,14 +987,7 @@ async def send_message_stream(
                 status_code=402,
                 detail="Daily query limit has run out. You must wait until tomorrow for renewal.",
             )
-        try:
-            remaining_balance_after = await storage.consume_account_tokens(
-                user["id"],
-                1,
-                FREE_DAILY_QUERY_LIMIT,
-            )
-        except ValueError as error:
-            raise HTTPException(status_code=402, detail=str(error)) from error
+        remaining_balance_after = remaining_queries
 
     async def event_generator():
         remaining_balance_current = remaining_balance_after
@@ -986,6 +1018,15 @@ async def send_message_stream(
                 session_id=conversation_session_id,
             )
             yield f"data: {json.dumps({'type': 'stage1_complete', 'data': stage1_results})}\n\n"
+
+            # Free plan: count one query only after Stage 1 is complete,
+            # immediately before Stage 2 begins.
+            if plan == "free" and is_first_message and stage1_results:
+                remaining_balance_current = await storage.consume_account_tokens(
+                    user["id"],
+                    1,
+                    FREE_DAILY_QUERY_LIMIT,
+                )
 
             # Stage 2: Collect rankings
             yield f"data: {json.dumps({'type': 'stage2_start'})}\n\n"
