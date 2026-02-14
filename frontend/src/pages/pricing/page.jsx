@@ -152,7 +152,7 @@ export default function PricingPage() {
             <ul className="plan-features">
               <li>Core council chat</li>
               <li>Conversation history</li>
-              <li>Manual credit top-ups</li>
+              <li>3 queries per day (1 query per new conversation)</li>
             </ul>
             <button type="button" className="plan-btn ghost" disabled>
               Current baseline
@@ -168,8 +168,8 @@ export default function PricingPage() {
             <div className="plan-interval">per month</div>
             <ul className="plan-features">
               <li>Pro plan on Stripe</li>
-              <li>Priority billing support path</li>
-              <li>Streamlined checkout flow</li>
+              <li>200,000 tokens per day</li>
+              <li>Token-based usage for all messages</li>
             </ul>
             <button
               type="button"

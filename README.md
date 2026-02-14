@@ -43,6 +43,7 @@ SUPABASE_API_KEY_SECRET=sb_secret_...
 STRIPE_API_KEY_SECRET=sk_test_...
 STRIPE_API_KEY_PUBLIC=pk_test_...
 STRIPE_WEBHOOK_SECRET=whsec_...
+PRO_DAILY_TOKEN_CREDITS=200000
 ```
 
 Get your API key at [openrouter.ai](https://openrouter.ai/). Make sure to purchase the credits you need, or sign up for automatic top up.
@@ -121,10 +122,10 @@ Then open http://localhost:5173 in your browser.
 
 ## Credits
 
-- Each sent question consumes `1` credit.
-- You can create conversations without spending credits.
-- If your balance is `0`, sending a message will fail until you add credits.
-- Add credits from the sidebar "Add Credit" action.
+- Credits are token-based and available only for **PRO** accounts.
+- Daily PRO quota: `200,000` tokens (auto-renewed once per day).
+- Conversation usage (token usage) is deducted from this quota.
+- When daily quota reaches `0`, new conversations/messages are blocked until next day renewal.
 
 ## Pricing
 

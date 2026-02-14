@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import Tooltip from '../tooltip/tooltip';
 import './sidebar.css';
 
 function formatConversationDate(value) {
@@ -23,25 +23,17 @@ export default function Sidebar({
   onSelectConversation,
   onNewConversation,
   canCreateConversation,
+  createConversationDisabledReason,
   credits,
-  onAddCredits,
-  isAddingCredits,
   accountMessage,
   userEmail,
   userPlan,
   onLogout,
 }) {
-  const [creditInput, setCreditInput] = useState('1');
-
-  const handleAddCredits = async (event) => {
-    event.preventDefault();
-    const amount = Number.parseInt(creditInput, 10);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      return;
-    }
-    await onAddCredits(amount);
-    setCreditInput('1');
-  };
+  const quotaLabel =
+    userPlan === 'pro'
+      ? `${credits === 1 ? 'token' : 'tokens'} left`
+      : `${credits === 1 ? 'query' : 'queries'} left`;
 
   return (
     <div className="sidebar">
@@ -70,14 +62,21 @@ export default function Sidebar({
             Account
           </button>
         </div>
-        <button
-          className="new-conversation-btn"
-          onClick={onNewConversation}
-          disabled={!canCreateConversation}
-          title={canCreateConversation ? 'Create a new conversation' : 'No credits available'}
+        <Tooltip
+          className="new-conversation-tooltip"
+          content={createConversationDisabledReason}
+          disabled={canCreateConversation || !createConversationDisabledReason}
         >
-          + New Conversation
-        </button>
+          <span className="new-conversation-btn-wrap">
+            <button
+              className="new-conversation-btn"
+              onClick={onNewConversation}
+              disabled={!canCreateConversation}
+            >
+              + New Conversation
+            </button>
+          </span>
+        </Tooltip>
       </div>
 
       <div className="conversation-list">
@@ -147,27 +146,6 @@ export default function Sidebar({
       </div>
 
       <div className="sidebar-footer">
-        <div className="credits-panel">
-          <div className="credits-top-row">
-            <span className="credits-label">Credits</span>
-            <span className="credits-value">{credits}</span>
-          </div>
-          <form className="credits-form" onSubmit={handleAddCredits}>
-            <input
-              type="number"
-              min="1"
-              step="1"
-              value={creditInput}
-              onChange={(event) => setCreditInput(event.target.value)}
-              className="credits-input"
-              disabled={isAddingCredits}
-            />
-            <button type="submit" className="add-credits-btn" disabled={isAddingCredits}>
-              {isAddingCredits ? 'Adding...' : 'Add Credit'}
-            </button>
-          </form>
-          {accountMessage && <div className="account-message">{accountMessage}</div>}
-        </div>
         <div className="sidebar-user-row">
           <div className="sidebar-user-meta">
             <span className="sidebar-user-email">{userEmail}</span>
@@ -181,7 +159,7 @@ export default function Sidebar({
         </div>
         <div className="sidebar-billing-row">
           <span className="sidebar-credits-left">
-            {credits} {credits === 1 ? 'credit' : 'credits'} left
+            {credits.toLocaleString()} {quotaLabel}
           </span>
           <button
             type="button"
@@ -191,6 +169,7 @@ export default function Sidebar({
             Upgrade
           </button>
         </div>
+        {accountMessage && <div className="account-message">{accountMessage}</div>}
       </div>
     </div>
   );

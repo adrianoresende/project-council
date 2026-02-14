@@ -14,6 +14,7 @@ alter table public.conversations
 create table if not exists public.messages (
   id bigint generated always as identity primary key,
   conversation_id uuid not null references public.conversations (id) on delete cascade,
+  id_session text,
   role text not null check (role in ('user', 'assistant')),
   content text,
   stage1 jsonb,
@@ -28,6 +29,9 @@ create table if not exists public.messages (
     (role = 'assistant' and content is null and stage1 is not null and stage2 is not null and stage3 is not null)
   )
 );
+
+alter table public.messages
+  add column if not exists id_session text;
 
 alter table public.messages
   add column if not exists cost numeric(20,8) not null default 0;
@@ -73,6 +77,9 @@ create index if not exists conversations_user_id_created_at_idx
 
 create index if not exists messages_conversation_id_created_at_idx
   on public.messages (conversation_id, created_at asc, id asc);
+
+create index if not exists messages_id_session_created_at_idx
+  on public.messages (id_session, created_at asc, id asc);
 
 create index if not exists billing_payments_user_processed_idx
   on public.billing_payments (user_id, processed_at desc);

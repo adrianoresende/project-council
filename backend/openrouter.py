@@ -1,5 +1,6 @@
 """OpenRouter API client for making LLM requests."""
 
+import asyncio
 import httpx
 from typing import List, Dict, Any, Optional
 from .config import OPENROUTER_API_KEY, OPENROUTER_API_URL
@@ -56,7 +57,9 @@ def _normalize_usage(raw_usage: Any) -> Dict[str, Any]:
 async def query_model(
     model: str,
     messages: List[Dict[str, str]],
-    timeout: float = 120.0
+    timeout: float = 120.0,
+    session_id: str | None = None,
+    metadata: Dict[str, str] | None = None,
 ) -> Optional[Dict[str, Any]]:
     """
     Query a single model via OpenRouter API.
@@ -78,6 +81,23 @@ async def query_model(
         "model": model,
         "messages": messages,
     }
+    normalized_session_id = (
+        session_id.strip()[:128]
+        if isinstance(session_id, str) and session_id.strip()
+        else None
+    )
+    if normalized_session_id:
+        payload["session_id"] = normalized_session_id
+        headers["X-Session-Id"] = normalized_session_id
+
+    if isinstance(metadata, dict) and metadata:
+        metadata_payload = {
+            str(key): str(value)
+            for key, value in metadata.items()
+            if value is not None
+        }
+        if metadata_payload:
+            payload["metadata"] = metadata_payload
 
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
@@ -105,7 +125,9 @@ async def query_model(
 
 async def query_models_parallel(
     models: List[str],
-    messages: List[Dict[str, str]]
+    messages: List[Dict[str, str]],
+    session_id: str | None = None,
+    metadata: Dict[str, str] | None = None,
 ) -> Dict[str, Optional[Dict[str, Any]]]:
     """
     Query multiple models in parallel.
@@ -117,10 +139,16 @@ async def query_models_parallel(
     Returns:
         Dict mapping model identifier to response dict (or None if failed)
     """
-    import asyncio
-
     # Create tasks for all models
-    tasks = [query_model(model, messages) for model in models]
+    tasks = [
+        query_model(
+            model,
+            messages,
+            session_id=session_id,
+            metadata=metadata,
+        )
+        for model in models
+    ]
 
     # Wait for all to complete
     responses = await asyncio.gather(*tasks)

@@ -15,9 +15,8 @@ export default function ChatPage({
   onSelectConversation,
   onNewConversation,
   canCreateConversation,
+  createConversationDisabledReason,
   credits,
-  onAddCredits,
-  isAddingCredits,
   accountMessage,
   userEmail,
   userPlan,
@@ -40,9 +39,8 @@ export default function ChatPage({
         onSelectConversation={onSelectConversation}
         onNewConversation={onNewConversation}
         canCreateConversation={canCreateConversation}
+        createConversationDisabledReason={createConversationDisabledReason}
         credits={credits}
-        onAddCredits={onAddCredits}
-        isAddingCredits={isAddingCredits}
         accountMessage={accountMessage}
         userEmail={userEmail}
         userPlan={userPlan}

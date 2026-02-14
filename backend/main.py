@@ -38,6 +38,8 @@ from .config import (
     STRIPE_PUBLIC_KEY,
     STRIPE_WEBHOOK_SECRET,
     PRO_PLAN_PRICE_BRL_CENTS,
+    PRO_DAILY_TOKEN_CREDITS,
+    FREE_DAILY_QUERY_LIMIT,
     COUNCIL_ENV,
 )
 
@@ -103,8 +105,11 @@ class AddCreditsRequest(BaseModel):
 
 
 class CreditsResponse(BaseModel):
-    """Current credit balance for the authenticated account."""
+    """Current daily quota balance for the authenticated account."""
     credits: int
+    unit: str
+    limit: int
+    plan: str
 
 
 class AccountSummaryResponse(BaseModel):
@@ -178,6 +183,156 @@ def _normalize_plan(value: Any) -> str:
     if normalized == "pro":
         return "pro"
     return "free"
+
+
+def _get_user_plan(user: Dict[str, Any]) -> str:
+    """Resolve current account plan from auth metadata."""
+    user_metadata = user.get("user_metadata") or {}
+    app_metadata = user.get("app_metadata") or {}
+    billing_metadata = app_metadata.get("billing") if isinstance(app_metadata, dict) else {}
+    if not isinstance(billing_metadata, dict):
+        billing_metadata = {}
+    return _normalize_plan(
+        user_metadata.get("plan")
+        or billing_metadata.get("plan")
+        or app_metadata.get("plan")
+        or "free"
+    )
+
+
+async def _get_remaining_daily_tokens(user: Dict[str, Any]) -> int:
+    """Return remaining daily tokens for PRO accounts, or 0 for non-PRO."""
+    if _get_user_plan(user) != "pro":
+        return 0
+    return await storage.get_account_daily_credits(user["id"], PRO_DAILY_TOKEN_CREDITS)
+
+
+async def _get_remaining_daily_queries(user: Dict[str, Any]) -> int:
+    """Return remaining daily conversation queries for FREE accounts, or 0 for PRO."""
+    if _get_user_plan(user) != "free":
+        return 0
+    return await storage.get_account_daily_credits(user["id"], FREE_DAILY_QUERY_LIMIT)
+
+
+async def _get_remaining_plan_quota(user: Dict[str, Any]) -> tuple[int, str, int, str]:
+    """Return remaining quota and descriptor for current user plan."""
+    plan = _get_user_plan(user)
+    if plan == "pro":
+        remaining = await _get_remaining_daily_tokens(user)
+        return remaining, "tokens", PRO_DAILY_TOKEN_CREDITS, "pro"
+
+    remaining = await _get_remaining_daily_queries(user)
+    return remaining, "queries", FREE_DAILY_QUERY_LIMIT, "free"
+
+
+def _compress_message_content(text: str, max_chars: int) -> str:
+    """Keep both the start and end of long messages to preserve topic + details."""
+    cleaned = text.strip()
+    if len(cleaned) <= max_chars:
+        return cleaned
+    head_chars = max_chars // 2
+    tail_chars = max_chars - head_chars
+    return f"{cleaned[:head_chars]}\n...\n{cleaned[-tail_chars:]}"
+
+
+def _build_conversation_history(
+    messages: List[Dict[str, Any]],
+    *,
+    max_messages: int = 16,
+    max_total_chars: int = 16000,
+    max_chars_per_message: int = 2200,
+) -> List[Dict[str, str]]:
+    """
+    Build structured chat history for multi-turn model calls.
+
+    Returns OpenAI/OpenRouter-compatible message objects:
+    [{"role": "user"|"assistant", "content": "..."}]
+    """
+    if not isinstance(messages, list):
+        return []
+
+    history: List[Dict[str, str]] = []
+    for message in messages:
+        if not isinstance(message, dict):
+            continue
+
+        role = message.get("role")
+        text: str | None = None
+
+        if role == "user":
+            raw_text = message.get("content")
+            if isinstance(raw_text, str) and raw_text.strip():
+                text = raw_text
+        elif role == "assistant":
+            stage3 = message.get("stage3")
+            if isinstance(stage3, dict):
+                stage3_response = stage3.get("response")
+                if isinstance(stage3_response, str) and stage3_response.strip():
+                    text = stage3_response
+            if text is None:
+                raw_text = message.get("content")
+                if isinstance(raw_text, str) and raw_text.strip():
+                    text = raw_text
+
+        if role in {"user", "assistant"} and text:
+            history.append(
+                {
+                    "role": role,
+                    "content": _compress_message_content(text, max_chars_per_message),
+                }
+            )
+
+    if len(history) > max_messages:
+        history = history[-max_messages:]
+
+    bounded: List[Dict[str, str]] = []
+    running_chars = 0
+    for item in reversed(history):
+        content = item["content"]
+        next_size = len(content)
+        if bounded and running_chars + next_size > max_total_chars:
+            break
+        bounded.append(item)
+        running_chars += next_size
+
+    bounded.reverse()
+    return bounded
+
+
+def _normalize_session_id(value: Any) -> str | None:
+    """Best-effort normalization for model conversation session IDs."""
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    if not normalized:
+        return None
+    return normalized[:128]
+
+
+def _resolve_conversation_session_id(conversation: Dict[str, Any]) -> str:
+    """
+    Resolve a stable session ID for model continuation.
+
+    Priority:
+    1. Last stored message id_session
+    2. Conversation ID
+    3. New UUID fallback
+    """
+    messages = conversation.get("messages")
+    if isinstance(messages, list):
+        for message in reversed(messages):
+            if not isinstance(message, dict):
+                continue
+            session_id = _normalize_session_id(
+                message.get("id_session") or message.get("session_id")
+            )
+            if session_id:
+                return session_id
+
+    conversation_id = _normalize_session_id(conversation.get("id"))
+    if conversation_id:
+        return conversation_id
+    return str(uuid.uuid4())
 
 
 def _iso_datetime_from_unix(value: Any) -> str | None:
@@ -534,30 +689,22 @@ async def stripe_webhook(
 
 @app.get("/api/account/credits", response_model=CreditsResponse)
 async def get_credits(user: Dict[str, Any] = Depends(get_current_user)):
-    """Get current account credits for the logged in user."""
-    credits = await storage.get_account_credits(user["id"])
-    return {"credits": credits}
+    """Get remaining daily quota for the logged in account."""
+    credits, unit, limit, plan = await _get_remaining_plan_quota(user)
+    return {
+        "credits": credits,
+        "unit": unit,
+        "limit": limit,
+        "plan": plan,
+    }
 
 
 @app.get("/api/account/summary", response_model=AccountSummaryResponse)
 async def get_account_summary(user: Dict[str, Any] = Depends(get_current_user)):
     """Return basic account summary (email and current plan)."""
-    user_metadata = user.get("user_metadata") or {}
-    app_metadata = user.get("app_metadata") or {}
-    billing_metadata = app_metadata.get("billing") if isinstance(app_metadata, dict) else {}
-    if not isinstance(billing_metadata, dict):
-        billing_metadata = {}
-    plan = (
-        user_metadata.get("plan")
-        or billing_metadata.get("plan")
-        or app_metadata.get("plan")
-        or "free"
-    )
-    normalized_plan = _normalize_plan(plan)
-
     return {
         "email": user.get("email", ""),
-        "plan": normalized_plan,
+        "plan": _get_user_plan(user),
     }
 
 
@@ -575,13 +722,11 @@ async def add_credits(
     request: AddCreditsRequest,
     user: Dict[str, Any] = Depends(get_current_user),
 ):
-    """Add credits to the logged in user account."""
-    try:
-        credits = await storage.add_account_credits(user["id"], request.amount)
-    except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
-
-    return {"credits": credits}
+    """Manual credit top-up is disabled; quota renews daily for PRO users."""
+    raise HTTPException(
+        status_code=400,
+        detail="Manual credit top-up is disabled. PRO token credits renew daily.",
+    )
 
 
 @app.get("/api/conversations", response_model=List[ConversationMetadata])
@@ -599,6 +744,24 @@ async def create_conversation(
     user: Dict[str, Any] = Depends(get_current_user),
 ):
     """Create a new conversation."""
+    plan = _get_user_plan(user)
+    if plan == "free":
+        # Free users spend one query when they send the first message in a conversation.
+        # We still block opening drafts when daily query quota is exhausted.
+        remaining_queries = await _get_remaining_daily_queries(user)
+        if remaining_queries <= 0:
+            raise HTTPException(
+                status_code=402,
+                detail="Daily query limit has run out. You must wait until tomorrow for renewal.",
+            )
+    else:
+        remaining_tokens = await _get_remaining_daily_tokens(user)
+        if remaining_tokens <= 0:
+            raise HTTPException(
+                status_code=402,
+                detail="Daily token credit has run out. You must wait until tomorrow for renewal.",
+            )
+
     conversation_id = str(uuid.uuid4())
     conversation = await storage.create_conversation(conversation_id, user["id"])
     return conversation
@@ -648,27 +811,58 @@ async def send_message(
 
     # Check if this is the first message
     is_first_message = len(conversation["messages"]) == 0
+    conversation_history = _build_conversation_history(conversation.get("messages", []))
+    conversation_session_id = _resolve_conversation_session_id(conversation)
+    plan = _get_user_plan(user)
+    remaining_balance_after = 0
 
-    # Consume one credit for each user question
-    try:
-        await storage.consume_account_credit(user["id"])
-    except ValueError as error:
-        raise HTTPException(status_code=402, detail=str(error)) from error
+    if plan == "pro":
+        remaining_tokens = await _get_remaining_daily_tokens(user)
+        if remaining_tokens <= 0:
+            raise HTTPException(
+                status_code=402,
+                detail="Daily token credit has run out. You must wait until tomorrow for renewal.",
+            )
+    elif is_first_message:
+        remaining_queries = await _get_remaining_daily_queries(user)
+        if remaining_queries <= 0:
+            raise HTTPException(
+                status_code=402,
+                detail="Daily query limit has run out. You must wait until tomorrow for renewal.",
+            )
+        try:
+            remaining_balance_after = await storage.consume_account_tokens(
+                user["id"],
+                1,
+                FREE_DAILY_QUERY_LIMIT,
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=402, detail=str(error)) from error
 
     # Add user message
-    await storage.add_user_message(conversation_id, user["id"], request.content)
+    await storage.add_user_message(
+        conversation_id,
+        user["id"],
+        request.content,
+        id_session=conversation_session_id,
+    )
 
     # If this is the first message, generate a title
     title_usage = empty_usage_summary()
     if is_first_message:
-        title_result = await generate_conversation_title(request.content)
+        title_result = await generate_conversation_title(
+            request.content,
+            session_id=conversation_session_id,
+        )
         title = title_result.get("title", "New Conversation")
         title_usage = title_result.get("usage", empty_usage_summary())
         await storage.update_conversation_title(conversation_id, user["id"], title)
 
     # Run the 3-stage council process
     stage1_results, stage2_results, stage3_result, metadata = await run_full_council(
-        request.content
+        request.content,
+        conversation_history=conversation_history,
+        session_id=conversation_session_id,
     )
     if is_first_message:
         metadata["title_usage"] = title_usage
@@ -685,13 +879,27 @@ async def send_message(
         }
         stage3_result["title_usage"] = title_usage
 
+    if plan == "pro":
+        tokens_to_consume = max(0, int((metadata.get("usage") or {}).get("total_tokens", 0)))
+        try:
+            remaining_balance_after = await storage.consume_account_tokens(
+                user["id"],
+                tokens_to_consume,
+                PRO_DAILY_TOKEN_CREDITS,
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=402, detail=str(error)) from error
+    elif not is_first_message:
+        remaining_balance_after = await _get_remaining_daily_queries(user)
+
     # Add assistant message with all stages
     await storage.add_assistant_message(
         conversation_id,
         user["id"],
         stage1_results,
         stage2_results,
-        stage3_result
+        stage3_result,
+        id_session=conversation_session_id,
     )
     updated_conversation = await storage.get_conversation(conversation_id, user["id"])
 
@@ -701,6 +909,7 @@ async def send_message(
         "stage2": stage2_results,
         "stage3": stage3_result,
         "metadata": metadata,
+        "credits": remaining_balance_after,
         "conversation_usage": (updated_conversation or {}).get("usage", empty_usage_summary()),
     }
 
@@ -720,37 +929,84 @@ async def send_message_stream(
 
     # Check if this is the first message
     is_first_message = len(conversation["messages"]) == 0
+    conversation_history = _build_conversation_history(conversation.get("messages", []))
+    conversation_session_id = _resolve_conversation_session_id(conversation)
+    plan = _get_user_plan(user)
+    remaining_balance_after = 0
 
-    # Consume one credit for each user question
-    try:
-        await storage.consume_account_credit(user["id"])
-    except ValueError as error:
-        raise HTTPException(status_code=402, detail=str(error)) from error
+    if plan == "pro":
+        remaining_tokens = await _get_remaining_daily_tokens(user)
+        if remaining_tokens <= 0:
+            raise HTTPException(
+                status_code=402,
+                detail="Daily token credit has run out. You must wait until tomorrow for renewal.",
+            )
+    elif is_first_message:
+        remaining_queries = await _get_remaining_daily_queries(user)
+        if remaining_queries <= 0:
+            raise HTTPException(
+                status_code=402,
+                detail="Daily query limit has run out. You must wait until tomorrow for renewal.",
+            )
+        try:
+            remaining_balance_after = await storage.consume_account_tokens(
+                user["id"],
+                1,
+                FREE_DAILY_QUERY_LIMIT,
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=402, detail=str(error)) from error
 
     async def event_generator():
+        remaining_balance_current = remaining_balance_after
         try:
             # Add user message
-            await storage.add_user_message(conversation_id, user["id"], request.content)
+            await storage.add_user_message(
+                conversation_id,
+                user["id"],
+                request.content,
+                id_session=conversation_session_id,
+            )
 
             # Start title generation in parallel (don't await yet)
             title_task = None
             if is_first_message:
-                title_task = asyncio.create_task(generate_conversation_title(request.content))
+                title_task = asyncio.create_task(
+                    generate_conversation_title(
+                        request.content,
+                        session_id=conversation_session_id,
+                    )
+                )
 
             # Stage 1: Collect responses
             yield f"data: {json.dumps({'type': 'stage1_start'})}\n\n"
-            stage1_results = await stage1_collect_responses(request.content)
+            stage1_results = await stage1_collect_responses(
+                request.content,
+                conversation_history=conversation_history,
+                session_id=conversation_session_id,
+            )
             yield f"data: {json.dumps({'type': 'stage1_complete', 'data': stage1_results})}\n\n"
 
             # Stage 2: Collect rankings
             yield f"data: {json.dumps({'type': 'stage2_start'})}\n\n"
-            stage2_results, label_to_model = await stage2_collect_rankings(request.content, stage1_results)
+            stage2_results, label_to_model = await stage2_collect_rankings(
+                request.content,
+                stage1_results,
+                conversation_history=conversation_history,
+                session_id=conversation_session_id,
+            )
             aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
             yield f"data: {json.dumps({'type': 'stage2_complete', 'data': stage2_results, 'metadata': {'label_to_model': label_to_model, 'aggregate_rankings': aggregate_rankings}})}\n\n"
 
             # Stage 3: Synthesize final answer
             yield f"data: {json.dumps({'type': 'stage3_start'})}\n\n"
-            stage3_result = await stage3_synthesize_final(request.content, stage1_results, stage2_results)
+            stage3_result = await stage3_synthesize_final(
+                request.content,
+                stage1_results,
+                stage2_results,
+                conversation_history=conversation_history,
+                session_id=conversation_session_id,
+            )
             yield f"data: {json.dumps({'type': 'stage3_complete', 'data': stage3_result})}\n\n"
 
             metadata = {
@@ -780,18 +1036,29 @@ async def send_message_stream(
                 }
                 stage3_result["title_usage"] = title_usage
 
+            if plan == "pro":
+                tokens_to_consume = max(0, int((metadata.get("usage") or {}).get("total_tokens", 0)))
+                remaining_balance_current = await storage.consume_account_tokens(
+                    user["id"],
+                    tokens_to_consume,
+                    PRO_DAILY_TOKEN_CREDITS,
+                )
+            elif not is_first_message:
+                remaining_balance_current = await _get_remaining_daily_queries(user)
+
             # Save complete assistant message
             await storage.add_assistant_message(
                 conversation_id,
                 user["id"],
                 stage1_results,
                 stage2_results,
-                stage3_result
+                stage3_result,
+                id_session=conversation_session_id,
             )
             updated_conversation = await storage.get_conversation(conversation_id, user["id"])
 
             # Send completion event
-            yield f"data: {json.dumps({'type': 'complete', 'metadata': metadata, 'conversation_usage': (updated_conversation or {}).get('usage', empty_usage_summary())})}\n\n"
+            yield f"data: {json.dumps({'type': 'complete', 'metadata': metadata, 'credits': remaining_balance_current, 'conversation_usage': (updated_conversation or {}).get('usage', empty_usage_summary())})}\n\n"
 
         except Exception as e:
             # Send error event

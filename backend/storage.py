@@ -35,6 +35,32 @@ def _to_iso_datetime(value: Any) -> str | None:
     return datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat()
 
 
+def _parse_iso_datetime(value: Any) -> datetime | None:
+    """Best-effort parse for ISO datetime values."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    raw_value = value.strip()
+    if raw_value.endswith("Z"):
+        raw_value = f"{raw_value[:-1]}+00:00"
+    try:
+        parsed = datetime.fromisoformat(raw_value)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _normalize_session_id(value: Any) -> str | None:
+    """Best-effort normalization for conversation session identifiers."""
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    if not normalized:
+        return None
+    return normalized[:128]
+
+
 def _empty_usage_summary() -> Dict[str, Any]:
     """Return a normalized usage summary payload."""
     return {
@@ -280,7 +306,7 @@ async def get_conversation(conversation_id: str, user_id: str) -> Optional[Dict[
         "GET",
         "messages",
         params={
-            "select": "id,role,content,stage1,stage2,stage3,cost,total_tokens,created_at",
+            "select": "id,role,id_session,content,stage1,stage2,stage3,cost,total_tokens,created_at",
             "conversation_id": f"eq.{conversation_id}",
             "order": "created_at.asc,id.asc",
         },
@@ -293,6 +319,7 @@ async def get_conversation(conversation_id: str, user_id: str) -> Optional[Dict[
             messages.append(
                 {
                     "role": "user",
+                    "id_session": row.get("id_session"),
                     "content": row.get("content", ""),
                 }
             )
@@ -313,6 +340,7 @@ async def get_conversation(conversation_id: str, user_id: str) -> Optional[Dict[
         messages.append(
             {
                 "role": "assistant",
+                "id_session": row.get("id_session"),
                 "stage1": stage1,
                 "stage2": stage2,
                 "stage3": stage3,
@@ -382,33 +410,50 @@ async def list_conversations(user_id: str, archived: bool = False) -> List[Dict[
     for usage in usage_totals.values():
         usage["total_cost"] = round(usage["total_cost"], 8)
 
-    return [
-        {
-            "id": row["id"],
-            "created_at": row["created_at"],
-            "title": row.get("title") or "New Conversation",
-            "archived": bool(row.get("archived", False)),
-            "message_count": message_counts.get(row["id"], 0),
-            "usage": usage_totals.get(row["id"], _empty_usage_summary()),
-        }
-        for row in rows
-    ]
+    conversations: List[Dict[str, Any]] = []
+    for row in rows:
+        message_count = message_counts.get(row["id"], 0)
+        # Hide drafts (no messages yet) from sidebar list until first question.
+        if message_count <= 0:
+            continue
+        conversations.append(
+            {
+                "id": row["id"],
+                "created_at": row["created_at"],
+                "title": row.get("title") or "New Conversation",
+                "archived": bool(row.get("archived", False)),
+                "message_count": message_count,
+                "usage": usage_totals.get(row["id"], _empty_usage_summary()),
+            }
+        )
+
+    return conversations
 
 
-async def add_user_message(conversation_id: str, user_id: str, content: str):
+async def add_user_message(
+    conversation_id: str,
+    user_id: str,
+    content: str,
+    id_session: str | None = None,
+):
     """Add a user message to a user-owned conversation."""
     conversation_row = await _get_conversation_row(conversation_id, user_id)
     if conversation_row is None:
         raise ValueError(f"Conversation {conversation_id} not found")
 
+    payload = {
+        "conversation_id": conversation_id,
+        "role": "user",
+        "content": content,
+    }
+    normalized_session_id = _normalize_session_id(id_session)
+    if normalized_session_id is not None:
+        payload["id_session"] = normalized_session_id
+
     await _rest_request(
         "POST",
         "messages",
-        json_body={
-            "conversation_id": conversation_id,
-            "role": "user",
-            "content": content,
-        },
+        json_body=payload,
         prefer="return=minimal",
     )
 
@@ -419,6 +464,7 @@ async def add_assistant_message(
     stage1: List[Dict[str, Any]],
     stage2: List[Dict[str, Any]],
     stage3: Dict[str, Any],
+    id_session: str | None = None,
 ):
     """Add the assistant's staged response to a user-owned conversation."""
     conversation_row = await _get_conversation_row(conversation_id, user_id)
@@ -426,20 +472,24 @@ async def add_assistant_message(
         raise ValueError(f"Conversation {conversation_id} not found")
 
     message_usage = _calculate_message_usage(stage1, stage2, stage3)
+    payload = {
+        "conversation_id": conversation_id,
+        "role": "assistant",
+        "content": None,
+        "stage1": stage1,
+        "stage2": stage2,
+        "stage3": stage3,
+        "cost": message_usage["total_cost"],
+        "total_tokens": message_usage["total_tokens"],
+    }
+    normalized_session_id = _normalize_session_id(id_session)
+    if normalized_session_id is not None:
+        payload["id_session"] = normalized_session_id
 
     await _rest_request(
         "POST",
         "messages",
-        json_body={
-            "conversation_id": conversation_id,
-            "role": "assistant",
-            "content": None,
-            "stage1": stage1,
-            "stage2": stage2,
-            "stage3": stage3,
-            "cost": message_usage["total_cost"],
-            "total_tokens": message_usage["total_tokens"],
-        },
+        json_body=payload,
         prefer="return=minimal",
     )
 
@@ -505,15 +555,81 @@ def _parse_credit_result(result: Any) -> int:
     raise RuntimeError("Unexpected credit response from database.")
 
 
-async def _ensure_credit_account(user_id: str):
+async def _ensure_credit_account(user_id: str, initial_credits: int = 0):
     """Ensure a credit row exists for the user without overwriting current balance."""
     await _rest_request(
         "POST",
         "account_credits",
         params={"on_conflict": "user_id"},
-        json_body={"user_id": user_id, "credits": 0},
+        json_body={"user_id": user_id, "credits": max(0, int(initial_credits))},
         prefer="resolution=ignore-duplicates,return=minimal",
     )
+
+
+async def _get_credit_row(user_id: str) -> Dict[str, Any] | None:
+    """Load account credits row for a user."""
+    rows = await _rest_request(
+        "GET",
+        "account_credits",
+        params={
+            "select": "user_id,credits,updated_at",
+            "user_id": f"eq.{user_id}",
+            "limit": "1",
+        },
+    )
+    if isinstance(rows, list) and rows:
+        return rows[0]
+    return None
+
+
+async def _set_credit_row(user_id: str, credits: int, updated_at: datetime):
+    """Persist account credits row values."""
+    await _rest_request(
+        "PATCH",
+        "account_credits",
+        params={"user_id": f"eq.{user_id}"},
+        json_body={
+            "credits": max(0, int(credits)),
+            "updated_at": updated_at.astimezone(timezone.utc).isoformat(),
+        },
+        prefer="return=minimal",
+    )
+
+
+async def get_account_daily_credits(user_id: str, daily_quota: int) -> int:
+    """Return daily remaining credits, resetting once per UTC day."""
+    safe_quota = max(0, int(daily_quota))
+    now = datetime.now(timezone.utc)
+
+    await _ensure_credit_account(user_id, safe_quota)
+    row = await _get_credit_row(user_id)
+    if row is None:
+        return safe_quota
+
+    updated_at = _parse_iso_datetime(row.get("updated_at"))
+    should_reset = updated_at is None or updated_at.date() != now.date()
+    if should_reset:
+        await _set_credit_row(user_id, safe_quota, now)
+        return safe_quota
+
+    return max(0, _to_int(row.get("credits")))
+
+
+async def consume_account_tokens(user_id: str, tokens: int, daily_quota: int) -> int:
+    """Consume tokens from daily credits and return remaining balance."""
+    consume = max(0, int(tokens))
+    remaining = await get_account_daily_credits(user_id, daily_quota)
+    if remaining <= 0:
+        raise ValueError(
+            "Daily credit has run out. You must wait until tomorrow for renewal."
+        )
+
+    if consume == 0:
+        return remaining
+
+    next_remaining = max(0, remaining - consume)
+    await _set_credit_row(user_id, next_remaining, datetime.now(timezone.utc))
+    return next_remaining
 
 
 async def get_account_credits(user_id: str) -> int:

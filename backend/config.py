@@ -59,4 +59,10 @@ STRIPE_PUBLIC_KEY = os.getenv("STRIPE_API_KEY_PUBLIC")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
 
 # Pricing (BRL cents)
-PRO_PLAN_PRICE_BRL_CENTS = 9000
+PRO_PLAN_PRICE_BRL_CENTS = int(os.getenv("PRO_PLAN_PRICE_BRL_CENTS") or "9000")
+
+# Daily token quota for PRO accounts
+PRO_DAILY_TOKEN_CREDITS = int(os.getenv("PRO_DAILY_TOKEN_CREDITS") or "200000")
+
+# Daily conversation quota for FREE accounts (1 query = 1 new conversation started)
+FREE_DAILY_QUERY_LIMIT = int(os.getenv("FREE_DAILY_QUERY_LIMIT") or "3")

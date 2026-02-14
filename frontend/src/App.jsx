@@ -43,7 +43,6 @@ function App() {
   const [pendingConversationLoads, setPendingConversationLoads] = useState(0);
   const [conversationListTab, setConversationListTab] = useState('chats');
   const [credits, setCredits] = useState(0);
-  const [isAddingCredits, setIsAddingCredits] = useState(false);
   const [accountMessage, setAccountMessage] = useState('');
   const [currentConversationId, setCurrentConversationId] = useState(null);
   const [currentConversation, setCurrentConversation] = useState(null);
@@ -59,7 +58,6 @@ function App() {
     setPendingConversationLoads(0);
     setConversationListTab('chats');
     setCredits(0);
-    setIsAddingCredits(false);
     setAccountMessage('');
     setCurrentConversationId(null);
     setCurrentConversation(null);
@@ -148,11 +146,12 @@ function App() {
   useEffect(() => {
     const onPlanUpdated = () => {
       loadAccountSummary();
+      loadCredits();
     };
 
     window.addEventListener('account-plan-updated', onPlanUpdated);
     return () => window.removeEventListener('account-plan-updated', onPlanUpdated);
-  }, [loadAccountSummary]);
+  }, [loadAccountSummary, loadCredits]);
 
   const loadConversation = useCallback(async (id) => {
     try {
@@ -215,6 +214,14 @@ function App() {
   };
 
   const handleNewConversation = async () => {
+    if (credits <= 0) {
+      if (userPlan === 'pro') {
+        setAccountMessage('Daily token credit has run out. You must wait until tomorrow for renewal.');
+      } else {
+        setAccountMessage('Daily query limit has run out. You must wait until tomorrow for renewal.');
+      }
+      return;
+    }
     setAccountMessage('');
     try {
       const newConv = await api.createConversation();
@@ -222,50 +229,26 @@ function App() {
         window.history.pushState({}, '', '/');
         setMainView('chat');
       }
-      const conversationSummary = {
-        id: newConv.id,
-        created_at: newConv.created_at,
-        archived: false,
-        message_count: 0,
-        title: newConv.title,
-      };
-
-      const chatsCache = conversationListCacheRef.current.chats;
-      if (Array.isArray(chatsCache)) {
-        conversationListCacheRef.current.chats = [conversationSummary, ...chatsCache];
-      }
-
-      if (conversationListTab === 'chats') {
-        setConversations((prev) => [
-          conversationSummary,
-          ...prev,
-        ]);
-        loadConversations({ force: true });
-      }
+      // Keep new conversations out of the sidebar list until the first message
+      // is sent and persisted.
       setCurrentConversationId(newConv.id);
+      setCurrentConversation(newConv);
+      loadCredits();
     } catch (error) {
       if (error.status === 401) {
         handleUnauthorized();
         return;
+      }
+      if (error.status === 402) {
+        setAccountMessage(
+          error.message
+          || (userPlan === 'pro'
+            ? 'Daily token credit has run out. You must wait until tomorrow for renewal.'
+            : 'Daily query limit has run out. You must wait until tomorrow for renewal.')
+        );
+        loadCredits();
       }
       console.error('Failed to create conversation:', error);
-    }
-  };
-
-  const handleAddCredits = async (amount) => {
-    setIsAddingCredits(true);
-    setAccountMessage('');
-    try {
-      const response = await api.addCredits(amount);
-      setCredits(response.credits ?? 0);
-    } catch (error) {
-      if (error.status === 401) {
-        handleUnauthorized();
-        return;
-      }
-      setAccountMessage(error.message || 'Failed to add credits.');
-    } finally {
-      setIsAddingCredits(false);
     }
   };
 
@@ -451,7 +434,12 @@ function App() {
         return;
       }
       if (error.status === 402) {
-        setAccountMessage(error.message || 'Insufficient credits.');
+        setAccountMessage(
+          error.message
+          || (userPlan === 'pro'
+            ? 'Daily token credit has run out. You must wait until tomorrow for renewal.'
+            : 'Daily query limit has run out. You must wait until tomorrow for renewal.')
+        );
         loadCredits();
       }
 
@@ -463,6 +451,12 @@ function App() {
       setIsLoading(false);
     }
   };
+
+  const canCreateConversation = credits > 0;
+  const createConversationDisabledReason =
+    userPlan === 'pro'
+      ? 'Daily token credit has run out. You must wait until tomorrow for renewal.'
+      : 'Daily query limit has run out. You must wait until tomorrow for renewal.';
 
   if (isAuthLoading) {
     return (
@@ -488,10 +482,9 @@ function App() {
       currentConversationId={currentConversationId}
       onSelectConversation={handleSelectConversation}
       onNewConversation={handleNewConversation}
-      canCreateConversation={true}
+      canCreateConversation={canCreateConversation}
+      createConversationDisabledReason={createConversationDisabledReason}
       credits={credits}
-      onAddCredits={handleAddCredits}
-      isAddingCredits={isAddingCredits}
       accountMessage={accountMessage}
       userEmail={user.email}
       userPlan={userPlan}

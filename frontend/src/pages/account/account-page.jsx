@@ -40,6 +40,18 @@ function addOneMonth(value) {
   return shifted;
 }
 
+function normalizePlan(value) {
+  if (typeof value !== 'string') return 'free';
+  return value.trim().toLowerCase() === 'pro' ? 'pro' : 'free';
+}
+
+function getQuotaLabel(plan, amount) {
+  if (plan === 'pro') {
+    return amount === 1 ? 'token left' : 'tokens left';
+  }
+  return amount === 1 ? 'query left' : 'queries left';
+}
+
 export default function AccountPage({ onGoToPricing }) {
   const [summary, setSummary] = useState(null);
   const [creditsLeft, setCreditsLeft] = useState(0);
@@ -55,16 +67,54 @@ export default function AccountPage({ onGoToPricing }) {
     setIsLoading(true);
     setError('');
     try {
-      const [summaryData, creditsData, paymentsData] = await Promise.all([
+      const [summaryResult, creditsResult, paymentsResult] = await Promise.allSettled([
         api.getAccountSummary(),
         api.getCredits(),
         api.getAccountPayments(1),
       ]);
-      setSummary(summaryData);
-      setCreditsLeft(creditsData?.credits ?? 0);
-      setLatestPayment(Array.isArray(paymentsData) && paymentsData.length > 0 ? paymentsData[0] : null);
-    } catch (loadError) {
-      setError(loadError.message || 'Failed to load account.');
+
+      if (summaryResult.status === 'fulfilled') {
+        setSummary(summaryResult.value);
+      } else {
+        // Fallback: account summary endpoint might be unavailable on older backend.
+        try {
+          const currentUser = await api.getCurrentUser();
+          const fallbackPlan = normalizePlan(
+            currentUser?.user_metadata?.plan
+              || currentUser?.app_metadata?.billing?.plan
+              || currentUser?.app_metadata?.plan
+              || 'free'
+          );
+          setSummary({
+            email: currentUser?.email || '-',
+            plan: fallbackPlan,
+          });
+        } catch {
+          setSummary({ email: '-', plan: 'free' });
+          setError(
+            summaryResult.reason?.message
+              || 'Failed to load account.'
+          );
+        }
+      }
+
+      if (creditsResult.status === 'fulfilled') {
+        setCreditsLeft(creditsResult.value?.credits ?? 0);
+      } else {
+        setCreditsLeft(0);
+      }
+
+      if (paymentsResult.status === 'fulfilled') {
+        const payments = paymentsResult.value;
+        setLatestPayment(Array.isArray(payments) && payments.length > 0 ? payments[0] : null);
+      } else {
+        setLatestPayment(null);
+      }
+    } catch {
+      setSummary({ email: '-', plan: 'free' });
+      setCreditsLeft(0);
+      setLatestPayment(null);
+      setError('Failed to load account.');
     } finally {
       setIsLoading(false);
     }
@@ -155,8 +205,12 @@ export default function AccountPage({ onGoToPricing }) {
                 </div>
               </div>
               <div className="account-cell">
-                <div className="account-label">credits left</div>
-                <div className="account-value">{creditsLeft}</div>
+                <div className="account-label">
+                  {summary?.plan === 'pro' ? 'tokens left' : 'queries left'}
+                </div>
+                <div className="account-value">
+                  {creditsLeft.toLocaleString()} {getQuotaLabel(summary?.plan || 'free', creditsLeft)}
+                </div>
               </div>
             </div>
 
