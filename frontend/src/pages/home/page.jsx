@@ -26,7 +26,7 @@ export default function ChatPage({
   isLoading,
 }) {
   return (
-    <div className="app">
+    <div className="flex h-screen w-screen overflow-hidden bg-white font-sans text-slate-800">
       <Sidebar
         mainView={mainView}
         onChangeMainView={onChangeMainView}

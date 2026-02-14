@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import './stage-1.css';
 
 function formatUsage(usage) {
   if (!usage || typeof usage !== 'object') return null;
@@ -24,14 +23,18 @@ export default function Stage1({ responses }) {
   }
 
   return (
-    <div className="stage stage1">
-      <h3 className="stage-title">Stage 1: Individual Responses</h3>
+    <div className="my-6 rounded-lg border border-slate-200 bg-slate-50 p-5">
+      <h3 className="mb-4 text-base font-semibold text-slate-800">Stage 1: Individual Responses</h3>
 
-      <div className="tabs">
+      <div className="mb-4 flex flex-wrap gap-2">
         {responses.map((resp, index) => (
           <button
             key={index}
-            className={`tab ${activeTab === index ? 'active' : ''}`}
+            className={`btn rounded-t-md px-4 py-2 text-sm ${
+              activeTab === index
+                ? 'border-sky-500 border-b-white bg-white font-semibold text-sky-600'
+                : 'border-slate-300 bg-white text-slate-500 hover:border-sky-500 hover:bg-slate-100 hover:text-slate-800'
+            }`}
             onClick={() => setActiveTab(index)}
           >
             {resp.model.split('/')[1] || resp.model}
@@ -39,14 +42,14 @@ export default function Stage1({ responses }) {
         ))}
       </div>
 
-      <div className="tab-content">
-        <div className="model-header">
-          <div className="model-name">{responses[activeTab].model}</div>
-          <div className="usage-pill">
+      <div className="rounded-md border border-slate-200 bg-white p-4">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div className="font-mono text-xs text-slate-400">{responses[activeTab].model}</div>
+          <div className="whitespace-nowrap rounded-full border border-blue-200 bg-blue-100 px-2.5 py-1 text-xs text-blue-900">
             {formatUsage(responses[activeTab].usage)}
           </div>
         </div>
-        <div className="response-text markdown-content">
+        <div className="markdown-content leading-relaxed text-slate-800">
           <ReactMarkdown>{responses[activeTab].response}</ReactMarkdown>
         </div>
       </div>

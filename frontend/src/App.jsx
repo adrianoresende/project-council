@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import AccountAccessPage from './pages/account/page';
 import ChatPage from './pages/home/page';
 import { api } from './api';
-import './App.css';
 
 function getMainViewFromPath(pathname) {
   if (pathname === '/pricing') return 'pricing';
@@ -460,7 +459,7 @@ function App() {
 
   if (isAuthLoading) {
     return (
-      <div className="auth-loading">
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-600">
         <p>Checking session...</p>
       </div>
     );

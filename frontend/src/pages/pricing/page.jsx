@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../../api';
-import './page.css';
 
 function getBillingStatusFromUrl() {
   const params = new URLSearchParams(window.location.search);
@@ -127,53 +126,63 @@ export default function PricingPage() {
   };
 
   return (
-    <div className="pricing-page">
-      <div className="pricing-container">
-        <h1 className="pricing-title">Pricing</h1>
-        <p className="pricing-subtitle">Choose the plan that fits your usage.</p>
+    <div className="h-screen flex-1 overflow-y-auto bg-gradient-to-br from-blue-50 via-sky-50 to-emerald-50">
+      <div className="mx-auto max-w-[960px] px-6 pb-14 pt-10">
+        <h1 className="text-[34px] text-slate-900">Pricing</h1>
+        <p className="mb-6 mt-2 text-[15px] text-slate-600">Choose the plan that fits your usage.</p>
 
         {billingStatus === 'success' && (
-          <div className="pricing-notice success">
+          <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-3 text-[13px] text-emerald-800">
             Payment completed. Your Pro access will be activated after Stripe confirmation.
           </div>
         )}
         {billingStatus === 'cancel' && (
-          <div className="pricing-notice warning">
+          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3 text-[13px] text-amber-800">
             Checkout was canceled. You can try again at any time.
           </div>
         )}
-        {error && <div className="pricing-notice error">{error}</div>}
+        {error && <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-3 text-[13px] text-rose-800">{error}</div>}
 
-        <div className="pricing-grid">
-          <div className="plan-card">
-            <div className="plan-name">Free</div>
-            <div className="plan-price">{formatBRL(0)}</div>
-            <div className="plan-interval">forever</div>
-            <ul className="plan-features">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="relative rounded-2xl border border-slate-200 bg-white p-6 shadow-[0_8px_20px_rgba(20,45,90,0.05)]">
+            <div className="mb-2 text-sm text-slate-700">Free</div>
+            <div className="text-[38px] leading-none font-extrabold text-slate-900">{formatBRL(0)}</div>
+            <div className="mt-1.5 text-[13px] text-slate-500">forever</div>
+            <ul className="my-5 list-disc space-y-2 pl-5 text-sm leading-relaxed text-slate-700">
               <li>Core council chat</li>
               <li>Conversation history</li>
               <li>3 queries per day (1 query per new conversation)</li>
             </ul>
-            <button type="button" className="plan-btn ghost" disabled>
+            <button
+              type="button"
+              className="btn w-full cursor-default rounded-xl border-slate-300 bg-slate-50 px-3 py-2.5 text-sm font-bold text-slate-600"
+              disabled
+            >
               Current baseline
             </button>
           </div>
 
-          <div className="plan-card featured">
-            <div className="plan-badge">Pro</div>
-            <div className="plan-name">Pro</div>
-            <div className="plan-price">
+          <div className="relative rounded-2xl border border-blue-300 bg-white p-6 shadow-[0_14px_28px_rgba(20,63,130,0.12)]">
+            <div className="absolute right-3.5 top-3.5 rounded-full border border-blue-200 bg-blue-100 px-2 py-1 text-[11px] font-bold text-blue-700">
+              Pro
+            </div>
+            <div className="mb-2 text-sm text-slate-700">Pro</div>
+            <div className="text-[38px] leading-none font-extrabold text-slate-900">
               {formatBRL(proPlan?.price_brl ?? 90)}
             </div>
-            <div className="plan-interval">per month</div>
-            <ul className="plan-features">
+            <div className="mt-1.5 text-[13px] text-slate-500">per month</div>
+            <ul className="my-5 list-disc space-y-2 pl-5 text-sm leading-relaxed text-slate-700">
               <li>Pro plan on Stripe</li>
               <li>200,000 tokens per day</li>
               <li>Token-based usage for all messages</li>
             </ul>
             <button
               type="button"
-              className={`plan-btn ${isCurrentPro ? 'ghost' : 'primary'}`}
+              className={`btn w-full rounded-xl px-3 py-2.5 text-sm font-bold ${
+                isCurrentPro
+                  ? 'cursor-default border-slate-300 bg-slate-50 text-slate-600'
+                  : 'border-emerald-700 bg-gradient-to-b from-emerald-600 to-emerald-700 text-white'
+              } disabled:cursor-not-allowed disabled:opacity-65`}
               disabled={checkoutDisabled}
               onClick={handleCheckout}
             >

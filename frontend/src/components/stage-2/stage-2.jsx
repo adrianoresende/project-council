@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import './stage-2.css';
 
 function formatUsage(usage) {
   if (!usage || typeof usage !== 'object') return null;
@@ -36,20 +35,24 @@ export default function Stage2({ rankings, labelToModel, aggregateRankings }) {
   }
 
   return (
-    <div className="stage stage2">
-      <h3 className="stage-title">Stage 2: Peer Rankings</h3>
+    <div className="my-6 rounded-lg border border-slate-200 bg-slate-50 p-5">
+      <h3 className="mb-4 text-base font-semibold text-slate-800">Stage 2: Peer Rankings</h3>
 
-      <h4>Raw Evaluations</h4>
-      <p className="stage-description">
+      <h4 className="mb-2 text-sm font-semibold text-slate-800">Raw Evaluations</h4>
+      <p className="mb-3 text-[13px] leading-relaxed text-slate-500">
         Each model evaluated all responses (anonymized as Response A, B, C, etc.) and provided rankings.
         Below, model names are shown in <strong>bold</strong> for readability, but the original evaluation used anonymous labels.
       </p>
 
-      <div className="tabs">
+      <div className="mb-4 flex flex-wrap gap-2">
         {rankings.map((rank, index) => (
           <button
             key={index}
-            className={`tab ${activeTab === index ? 'active' : ''}`}
+            className={`btn rounded-t-md px-4 py-2 text-sm ${
+              activeTab === index
+                ? 'border-sky-500 border-b-white bg-white font-semibold text-sky-600'
+                : 'border-slate-300 bg-white text-slate-500 hover:border-sky-500 hover:bg-slate-100 hover:text-slate-800'
+            }`}
             onClick={() => setActiveTab(index)}
           >
             {rank.model.split('/')[1] || rank.model}
@@ -57,16 +60,16 @@ export default function Stage2({ rankings, labelToModel, aggregateRankings }) {
         ))}
       </div>
 
-      <div className="tab-content">
-        <div className="ranking-header">
-          <div className="ranking-model">
+      <div className="mb-5 rounded-md border border-slate-200 bg-white p-4">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div className="font-mono text-xs text-slate-400">
             {rankings[activeTab].model}
           </div>
-          <div className="usage-pill">
+          <div className="whitespace-nowrap rounded-full border border-blue-200 bg-blue-100 px-2.5 py-1 text-xs text-blue-900">
             {formatUsage(rankings[activeTab].usage)}
           </div>
         </div>
-        <div className="ranking-content markdown-content">
+        <div className="markdown-content text-sm leading-relaxed text-slate-800">
           <ReactMarkdown>
             {deAnonymizeText(rankings[activeTab].ranking, labelToModel)}
           </ReactMarkdown>
@@ -74,11 +77,11 @@ export default function Stage2({ rankings, labelToModel, aggregateRankings }) {
 
         {rankings[activeTab].parsed_ranking &&
          rankings[activeTab].parsed_ranking.length > 0 && (
-          <div className="parsed-ranking">
-            <strong>Extracted Ranking:</strong>
+          <div className="mt-4 border-t-2 border-slate-200 pt-4">
+            <strong className="text-[13px] text-sky-600">Extracted Ranking:</strong>
             <ol>
               {rankings[activeTab].parsed_ranking.map((label, i) => (
-                <li key={i}>
+                <li key={i} className="my-1 font-mono text-[13px] text-slate-800">
                   {labelToModel && labelToModel[label]
                     ? labelToModel[label].split('/')[1] || labelToModel[label]
                     : label}
@@ -90,22 +93,25 @@ export default function Stage2({ rankings, labelToModel, aggregateRankings }) {
       </div>
 
       {aggregateRankings && aggregateRankings.length > 0 && (
-        <div className="aggregate-rankings">
-          <h4>Aggregate Rankings (Street Cred)</h4>
-          <p className="stage-description">
+        <div className="mb-5 rounded-lg border-2 border-blue-200 bg-blue-50 p-4">
+          <h4 className="mb-3 text-[15px] font-semibold text-blue-600">Aggregate Rankings (Street Cred)</h4>
+          <p className="mb-3 text-[13px] leading-relaxed text-slate-500">
             Combined results across all peer evaluations (lower score is better):
           </p>
-          <div className="aggregate-list">
+          <div className="flex flex-col gap-2">
             {aggregateRankings.map((agg, index) => (
-              <div key={index} className="aggregate-item">
-                <span className="rank-position">#{index + 1}</span>
-                <span className="rank-model">
+              <div
+                key={index}
+                className="flex items-center gap-3 rounded-md border border-blue-200 bg-white p-2.5"
+              >
+                <span className="min-w-[35px] text-base font-bold text-blue-600">#{index + 1}</span>
+                <span className="flex-1 font-mono text-sm font-medium text-slate-800">
                   {agg.model.split('/')[1] || agg.model}
                 </span>
-                <span className="rank-score">
+                <span className="font-mono text-[13px] text-slate-500">
                   Avg: {agg.average_rank.toFixed(2)}
                 </span>
-                <span className="rank-count">
+                <span className="text-xs text-slate-400">
                   ({agg.rankings_count} votes)
                 </span>
               </div>
