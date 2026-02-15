@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import Tooltip from "../tooltip/tooltip";
 import { useI18n } from "../../i18n";
 
@@ -12,7 +13,6 @@ function formatConversationDate(value, locale) {
 }
 
 export default function Sidebar({
-  mainView,
   onChangeMainView,
   conversations,
   isConversationsLoading,
@@ -31,13 +31,21 @@ export default function Sidebar({
   onLogout,
 }) {
   const { language, t } = useI18n();
-  const mainTabClass = (active) =>
-    `btn flex-1 px-2.5 py-1.5 text-xs font-bold ${
-      active
-        ? "border-sky-500 bg-sky-50 text-sky-700"
-        : "border-slate-300 bg-white text-slate-600 hover:border-sky-400 hover:text-sky-700"
-    }`;
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const userMenuRef = useRef(null);
 
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (!userMenuRef.current?.contains(event.target)) {
+        setIsUserMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
   const listTabClass = (active) =>
     `btn flex-1 px-2.5 py-2 text-xs font-semibold ${
       active
@@ -60,29 +68,6 @@ export default function Sidebar({
         <h1 className="mb-3 text-lg font-semibold text-slate-800">
           {t("common.appName")}
         </h1>
-        <div className="mb-2.5 flex gap-2">
-          <button
-            type="button"
-            className={mainTabClass(mainView === "chat")}
-            onClick={() => onChangeMainView("chat")}
-          >
-            {t("sidebar.chatsTab")}
-          </button>
-          <button
-            type="button"
-            className={mainTabClass(mainView === "pricing")}
-            onClick={() => onChangeMainView("pricing")}
-          >
-            {t("sidebar.pricingTab")}
-          </button>
-          <button
-            type="button"
-            className={mainTabClass(mainView === "account")}
-            onClick={() => onChangeMainView("account")}
-          >
-            {t("sidebar.accountTab")}
-          </button>
-        </div>
         <Tooltip
           className="w-full"
           content={createConversationDisabledReason}
@@ -178,27 +163,55 @@ export default function Sidebar({
       </div>
 
       <div className="flex flex-col gap-3 border-t border-slate-200 px-4 py-3">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-1.5">
-            <span className="max-w-[120px] truncate text-xs text-slate-500">
-              {userEmail}
-            </span>
-            <span
-              className={`rounded-full border px-1.5 py-0.5 text-[10px] font-bold ${
-                userPlan === "pro"
-                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                  : "border-slate-300 bg-slate-100 text-slate-600"
-              }`}
-            >
-              {(userPlan || "free").toUpperCase()}
-            </span>
-          </div>
+        <div ref={userMenuRef} className="relative">
           <button
-            className="btn rounded-md border-slate-300 bg-white px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
-            onClick={onLogout}
+            type="button"
+            className="flex w-full items-center justify-between rounded-md border border-slate-300 bg-white px-2.5 py-2 text-left hover:bg-slate-50"
+            onClick={() => setIsUserMenuOpen((prev) => !prev)}
           >
-            {t("sidebar.logoutButton")}
+            <div className="flex min-w-0 items-center gap-1.5">
+              <span className="max-w-[120px] truncate text-xs text-slate-500">
+                {userEmail}
+              </span>
+              <span
+                className={`rounded-full border px-1.5 py-0.5 text-[10px] font-bold ${
+                  userPlan === "pro"
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                    : "border-slate-300 bg-slate-100 text-slate-600"
+                }`}
+              >
+                {(userPlan || "free").toUpperCase()}
+              </span>
+            </div>
+            <span className="text-[10px] text-slate-500">
+              {isUserMenuOpen ? "▲" : "▼"}
+            </span>
           </button>
+
+          {isUserMenuOpen && (
+            <div className="absolute bottom-full left-0 z-20 mb-2 w-full rounded-md border border-slate-200 bg-white p-1 shadow-[0_8px_20px_rgba(15,23,42,0.1)]">
+              <button
+                type="button"
+                className="w-full rounded-md px-2 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-100"
+                onClick={() => {
+                  onChangeMainView("account");
+                  setIsUserMenuOpen(false);
+                }}
+              >
+                {t("sidebar.accountTab")}
+              </button>
+              <button
+                type="button"
+                className="w-full rounded-md px-2 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-100"
+                onClick={() => {
+                  onLogout();
+                  setIsUserMenuOpen(false);
+                }}
+              >
+                {t("sidebar.logoutButton")}
+              </button>
+            </div>
+          )}
         </div>
         <div className="flex items-center justify-between gap-2">
           <span className="text-xs text-slate-500">

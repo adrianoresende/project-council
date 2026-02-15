@@ -49,7 +49,7 @@ export default function ChatPage({
       {mainView === 'pricing' ? (
         <PricingPage />
       ) : mainView === 'account' ? (
-        <AccountPage onGoToPricing={() => onChangeMainView('pricing')} />
+        <AccountPage />
       ) : (
         <ChatInterface
           conversation={conversation}
