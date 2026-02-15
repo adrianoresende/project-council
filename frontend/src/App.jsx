@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import AccountAccessPage from './pages/account/page';
 import ChatPage from './pages/home/page';
 import { api } from './api';
+import { useI18n } from './i18n';
 
 function getMainViewFromPath(pathname) {
   if (pathname === '/pricing') return 'pricing';
@@ -32,6 +33,7 @@ function inferPlanFromUser(user) {
 }
 
 function App() {
+  const { t } = useI18n();
   const [user, setUser] = useState(null);
   const [userPlan, setUserPlan] = useState('free');
   const [isAuthLoading, setIsAuthLoading] = useState(true);
@@ -213,12 +215,13 @@ function App() {
   };
 
   const handleNewConversation = async () => {
+    const dailyLimitMessage =
+      userPlan === 'pro'
+        ? t('app.dailyTokenLimitReached')
+        : t('app.dailyQueryLimitReached');
+
     if (credits <= 0) {
-      if (userPlan === 'pro') {
-        setAccountMessage('Daily token credit has run out. You must wait until tomorrow for renewal.');
-      } else {
-        setAccountMessage('Daily query limit has run out. You must wait until tomorrow for renewal.');
-      }
+      setAccountMessage(dailyLimitMessage);
       return;
     }
     setAccountMessage('');
@@ -239,12 +242,7 @@ function App() {
         return;
       }
       if (error.status === 402) {
-        setAccountMessage(
-          error.message
-          || (userPlan === 'pro'
-            ? 'Daily token credit has run out. You must wait until tomorrow for renewal.'
-            : 'Daily query limit has run out. You must wait until tomorrow for renewal.')
-        );
+        setAccountMessage(error.message || dailyLimitMessage);
         loadCredits();
       }
       console.error('Failed to create conversation:', error);
@@ -433,11 +431,13 @@ function App() {
         return;
       }
       if (error.status === 402) {
+        const dailyLimitMessage =
+          userPlan === 'pro'
+            ? t('app.dailyTokenLimitReached')
+            : t('app.dailyQueryLimitReached');
         setAccountMessage(
           error.message
-          || (userPlan === 'pro'
-            ? 'Daily token credit has run out. You must wait until tomorrow for renewal.'
-            : 'Daily query limit has run out. You must wait until tomorrow for renewal.')
+          || dailyLimitMessage
         );
         loadCredits();
       }
@@ -454,13 +454,13 @@ function App() {
   const canCreateConversation = credits > 0;
   const createConversationDisabledReason =
     userPlan === 'pro'
-      ? 'Daily token credit has run out. You must wait until tomorrow for renewal.'
-      : 'Daily query limit has run out. You must wait until tomorrow for renewal.';
+      ? t('app.dailyTokenLimitReached')
+      : t('app.dailyQueryLimitReached');
 
   if (isAuthLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-600">
-        <p>Checking session...</p>
+        <p>{t('app.checkingSession')}</p>
       </div>
     );
   }

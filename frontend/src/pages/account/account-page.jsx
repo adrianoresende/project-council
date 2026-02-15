@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../api';
+import { AVAILABLE_LANGUAGES, useI18n } from '../../i18n';
 
 function getBillingStatusFromUrl() {
   const params = new URLSearchParams(window.location.search);
@@ -11,21 +12,21 @@ function getBillingSessionIdFromUrl() {
   return params.get('session_id');
 }
 
-function formatLocalDateTime(value) {
+function formatLocalDateTime(value, locale) {
   if (!value) return '-';
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return '-';
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat(locale || undefined, {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(parsed);
 }
 
-function formatLocalDateOnly(value) {
+function formatLocalDateOnly(value, locale) {
   if (!value) return '-';
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return '-';
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat(locale || undefined, {
     dateStyle: 'medium',
   }).format(parsed);
 }
@@ -44,14 +45,15 @@ function normalizePlan(value) {
   return value.trim().toLowerCase() === 'pro' ? 'pro' : 'free';
 }
 
-function getQuotaLabel(plan, amount) {
+function getQuotaLabel(plan, amount, t) {
   if (plan === 'pro') {
-    return amount === 1 ? 'token left' : 'tokens left';
+    return amount === 1 ? t('account.tokenLeftOne') : t('account.tokenLeftMany');
   }
-  return amount === 1 ? 'query left' : 'queries left';
+  return amount === 1 ? t('account.queryLeftOne') : t('account.queryLeftMany');
 }
 
 export default function AccountPage({ onGoToPricing }) {
+  const { language, setLanguage, t } = useI18n();
   const [summary, setSummary] = useState(null);
   const [creditsLeft, setCreditsLeft] = useState(0);
   const [latestPayment, setLatestPayment] = useState(null);
@@ -92,7 +94,7 @@ export default function AccountPage({ onGoToPricing }) {
           setSummary({ email: '-', plan: 'free' });
           setError(
             summaryResult.reason?.message
-              || 'Failed to load account.'
+              || t('account.failedToLoadAccount')
           );
         }
       }
@@ -113,11 +115,11 @@ export default function AccountPage({ onGoToPricing }) {
       setSummary({ email: '-', plan: 'free' });
       setCreditsLeft(0);
       setLatestPayment(null);
-      setError('Failed to load account.');
+      setError(t('account.failedToLoadAccount'));
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     loadSummary();
@@ -141,14 +143,14 @@ export default function AccountPage({ onGoToPricing }) {
         );
         await loadSummary();
       } catch (confirmError) {
-        setError(confirmError.message || 'Failed to confirm payment session.');
+        setError(confirmError.message || t('pricing.failedConfirmPayment'));
       }
     };
 
     confirmCheckout();
-  }, [billingSessionId, billingStatus, loadSummary]);
+  }, [billingSessionId, billingStatus, loadSummary, t]);
 
-  const handleUpgrade = async () => {
+  const handleUpgrade = useCallback(async () => {
     if (!summary || summary.plan !== 'free') return;
     setIsCheckoutLoading(true);
     setError('');
@@ -161,73 +163,98 @@ export default function AccountPage({ onGoToPricing }) {
         cancelUrl
       );
       if (!session?.checkout_url) {
-        throw new Error('Checkout URL not returned.');
+        throw new Error(t('pricing.checkoutUrlMissing'));
       }
       window.location.assign(session.checkout_url);
     } catch (checkoutError) {
-      setError(checkoutError.message || 'Failed to start upgrade checkout.');
+      setError(checkoutError.message || t('account.failedStartUpgradeCheckout'));
       setIsCheckoutLoading(false);
     }
-  };
+  }, [summary, t]);
 
   return (
     <div className="h-screen flex-1 overflow-y-auto bg-gradient-to-br from-blue-50 via-sky-50 to-teal-50">
       <div className="mx-auto my-10 w-[calc(100%-32px)] max-w-[720px] rounded-2xl border border-blue-100 bg-white px-6 py-7 shadow-[0_10px_28px_rgba(29,78,156,0.08)]">
-        <h1 className="mb-5 text-3xl text-slate-900">Account</h1>
+        <h1 className="mb-5 text-3xl text-slate-900">{t('account.title')}</h1>
 
         {billingStatus === 'success' && (
           <div className="mb-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-[13px] text-emerald-800">
-            Payment completed. Plan updates after Stripe confirmation.
+            {t('account.paymentCompleted')}
           </div>
         )}
         {billingStatus === 'cancel' && (
           <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[13px] text-amber-800">
-            Payment canceled. You can try again.
+            {t('account.paymentCancelled')}
           </div>
         )}
         {error && <div className="mb-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-[13px] text-rose-800">{error}</div>}
 
         {isLoading ? (
-          <div className="text-sm text-slate-500">Loading account...</div>
+          <div className="text-sm text-slate-500">{t('account.loadingAccount')}</div>
         ) : (
           <div className="flex flex-col gap-3.5">
             <div className="rounded-xl border border-blue-100 bg-blue-50 px-3.5 py-3">
-              <div className="mb-1 text-xs text-slate-500">email</div>
+              <div className="mb-1 text-xs text-slate-500">{t('account.emailLabel')}</div>
               <div className="text-[15px] font-semibold text-slate-900">{summary?.email || '-'}</div>
             </div>
 
             <div className="rounded-xl border border-blue-100 bg-blue-50 px-3.5 py-3">
               <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
                 <div className="min-w-0 flex-1">
-                  <div className="mb-1 text-xs text-slate-500">plan</div>
+                  <div className="mb-1 text-xs text-slate-500">{t('account.planLabel')}</div>
                   <div className="text-[15px] font-semibold tracking-[0.4px] text-slate-900">
                     {(summary?.plan || 'free').toUpperCase()}
                   </div>
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="mb-1 text-xs text-slate-500">
-                    {summary?.plan === 'pro' ? 'tokens left' : 'queries left'}
+                    {summary?.plan === 'pro'
+                      ? t('account.tokensLeftLabel')
+                      : t('account.queriesLeftLabel')}
                   </div>
                   <div className="text-[15px] font-semibold text-slate-900">
-                    {creditsLeft.toLocaleString()} {getQuotaLabel(summary?.plan || 'free', creditsLeft)}
+                    {creditsLeft.toLocaleString(language)} {getQuotaLabel(summary?.plan || 'free', creditsLeft, t)}
                   </div>
                 </div>
               </div>
             </div>
 
             <div className="rounded-xl border border-blue-100 bg-blue-50 px-3.5 py-3">
+              <div className="mb-1 text-xs text-slate-500">{t('account.languageLabel')}</div>
+              <div className="flex flex-col gap-2">
+                <select
+                  className="max-w-[240px] rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none transition-shadow focus:border-sky-500 focus:ring-4 focus:ring-sky-100"
+                  value={language}
+                  onChange={(event) => setLanguage(event.target.value)}
+                  aria-label={t('account.languageLabel')}
+                >
+                  {AVAILABLE_LANGUAGES.map((option) => (
+                    <option key={option.code} value={option.code}>
+                      {option.nativeLabel}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-slate-500">{t('account.languageDescription')}</p>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-blue-100 bg-blue-50 px-3.5 py-3">
               <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
                 <div className="min-w-0 flex-1">
-                  <div className="mb-1 text-xs text-slate-500">payment date</div>
+                  <div className="mb-1 text-xs text-slate-500">{t('account.paymentDateLabel')}</div>
                   <div className="text-[15px] font-semibold text-slate-900">
-                    {formatLocalDateTime(latestPayment?.paid_at || latestPayment?.processed_at)}
+                    {formatLocalDateTime(
+                      latestPayment?.paid_at || latestPayment?.processed_at,
+                      language
+                    )}
                   </div>
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="mb-1 text-xs text-slate-500">next payment</div>
+                  <div className="mb-1 text-xs text-slate-500">{t('account.nextPaymentLabel')}</div>
                   <div className="text-[15px] font-semibold text-slate-900">
                     {formatLocalDateOnly(
-                      addOneMonth(latestPayment?.paid_at || latestPayment?.processed_at)
+                      addOneMonth(latestPayment?.paid_at || latestPayment?.processed_at),
+                      language
                     )}
                   </div>
                 </div>
@@ -241,7 +268,9 @@ export default function AccountPage({ onGoToPricing }) {
                 onClick={handleUpgrade}
                 disabled={isCheckoutLoading}
               >
-                {isCheckoutLoading ? 'Redirecting...' : 'Upgrade to Pro (R$90)'}
+                {isCheckoutLoading
+                  ? t('account.redirectingButton')
+                  : t('account.upgradeToProPrice')}
               </button>
             )}
 
@@ -250,7 +279,7 @@ export default function AccountPage({ onGoToPricing }) {
               className="btn rounded-xl border-blue-200 bg-blue-100 px-3 py-2.5 text-left text-[13px] font-bold text-blue-800 hover:bg-blue-200"
               onClick={onGoToPricing}
             >
-              View plans on pricing page
+              {t('account.viewPlansButton')}
             </button>
           </div>
         )}

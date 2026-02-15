@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { api } from '../../api';
+import { useI18n } from '../../i18n';
 
 export default function AccountAccessPage({ onAuthenticated }) {
+  const { t } = useI18n();
   const [mode, setMode] = useState('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -15,7 +17,7 @@ export default function AccountAccessPage({ onAuthenticated }) {
     event.preventDefault();
 
     if (!email.trim() || !password.trim()) {
-      setError('Email and password are required.');
+      setError(t('auth.emailAndPasswordRequired'));
       return;
     }
 
@@ -29,14 +31,14 @@ export default function AccountAccessPage({ onAuthenticated }) {
         : await api.register(email, password);
 
       if (!response.access_token) {
-        setNotice('Account created. Confirm your email in Supabase, then log in.');
+        setNotice(t('auth.accountCreatedNotice'));
         return;
       }
 
       api.setAccessToken(response.access_token);
       onAuthenticated(response.user);
     } catch (submitError) {
-      setError(submitError.message || 'Authentication failed.');
+      setError(submitError.message || t('auth.authenticationFailed'));
     } finally {
       setIsSubmitting(false);
     }
@@ -45,13 +47,13 @@ export default function AccountAccessPage({ onAuthenticated }) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-sky-50 p-4">
       <div className="w-full max-w-md rounded-xl border border-blue-200 bg-white p-7 shadow-[0_10px_30px_rgba(36,68,121,0.08)]">
-        <h1 className="mb-2 text-[28px] text-slate-900">LLM Council</h1>
+        <h1 className="mb-2 text-[28px] text-slate-900">{t('common.appName')}</h1>
         <p className="mb-5 text-sm text-slate-600">
-          {isLogin ? 'Log in to access your chat' : 'Create an account to start chatting'}
+          {isLogin ? t('auth.loginSubtitle') : t('auth.registerSubtitle')}
         </p>
 
         <form className="flex flex-col gap-2.5" onSubmit={handleSubmit}>
-          <label htmlFor="email" className="text-[13px] font-semibold text-slate-800">Email</label>
+          <label htmlFor="email" className="text-[13px] font-semibold text-slate-800">{t('common.email')}</label>
           <input
             id="email"
             type="email"
@@ -62,7 +64,7 @@ export default function AccountAccessPage({ onAuthenticated }) {
             required
           />
 
-          <label htmlFor="password" className="text-[13px] font-semibold text-slate-800">Password</label>
+          <label htmlFor="password" className="text-[13px] font-semibold text-slate-800">{t('common.password')}</label>
           <input
             id="password"
             type="password"
@@ -81,12 +83,16 @@ export default function AccountAccessPage({ onAuthenticated }) {
             className="btn mt-1.5 border-sky-500 bg-sky-500 px-3.5 py-2.5 font-semibold text-white hover:border-sky-600 hover:bg-sky-600 disabled:opacity-70"
             disabled={isSubmitting}
           >
-            {isSubmitting ? 'Please wait...' : isLogin ? 'Log in' : 'Register'}
+            {isSubmitting
+              ? t('auth.pleaseWait')
+              : isLogin
+                ? t('auth.loginButton')
+                : t('auth.registerButton')}
           </button>
         </form>
 
         <div className="mt-4 flex items-center gap-2 text-[13px] text-slate-600">
-          {isLogin ? 'Need an account?' : 'Already registered?'}
+          {isLogin ? t('auth.needAccount') : t('auth.alreadyRegistered')}
           <button
             type="button"
             className="bg-transparent p-0 font-semibold text-sky-700"
@@ -96,7 +102,7 @@ export default function AccountAccessPage({ onAuthenticated }) {
               setNotice('');
             }}
           >
-            {isLogin ? 'Register' : 'Log in'}
+            {isLogin ? t('auth.registerButton') : t('auth.loginButton')}
           </button>
         </div>
       </div>

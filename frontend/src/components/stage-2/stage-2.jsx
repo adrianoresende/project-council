@@ -1,12 +1,15 @@
 import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import { useI18n } from '../../i18n';
 
-function formatUsage(usage) {
+function formatUsage(usage, t, language) {
   if (!usage || typeof usage !== 'object') return null;
 
   const totalTokens = Number(usage.total_tokens ?? 0);
   const cost = Number(usage.cost ?? usage.total_cost ?? 0);
-  const parts = [`${totalTokens.toLocaleString()} tokens`];
+  const parts = [
+    t('common.usageTokens', { count: totalTokens.toLocaleString(language) }),
+  ];
 
   if (Number.isFinite(cost) && cost > 0) {
     parts.push(`$${cost.toFixed(6)}`);
@@ -27,7 +30,13 @@ function deAnonymizeText(text, labelToModel) {
   return result;
 }
 
-export default function Stage2({ rankings, labelToModel, aggregateRankings }) {
+export default function Stage2({
+  rankings,
+  labelToModel,
+  aggregateRankings,
+  className = '',
+}) {
+  const { language, t } = useI18n();
   const [activeTab, setActiveTab] = useState(0);
 
   if (!rankings || rankings.length === 0) {
@@ -35,13 +44,12 @@ export default function Stage2({ rankings, labelToModel, aggregateRankings }) {
   }
 
   return (
-    <div className="my-6 rounded-lg border border-slate-200 bg-slate-50 p-5">
-      <h3 className="mb-4 text-base font-semibold text-slate-800">Stage 2: Peer Rankings</h3>
+    <div className={`my-6 rounded-lg border border-slate-200 bg-slate-50 p-5 ${className}`.trim()}>
+      <h3 className="mb-4 text-base font-semibold text-slate-800">{t('stage.stage2Title')}</h3>
 
-      <h4 className="mb-2 text-sm font-semibold text-slate-800">Raw Evaluations</h4>
+      <h4 className="mb-2 text-sm font-semibold text-slate-800">{t('stage.rawEvaluationsTitle')}</h4>
       <p className="mb-3 text-[13px] leading-relaxed text-slate-500">
-        Each model evaluated all responses (anonymized as Response A, B, C, etc.) and provided rankings.
-        Below, model names are shown in <strong>bold</strong> for readability, but the original evaluation used anonymous labels.
+        {t('stage.rawEvaluationsDescription')}
       </p>
 
       <div className="mb-4 flex flex-wrap gap-2">
@@ -66,7 +74,7 @@ export default function Stage2({ rankings, labelToModel, aggregateRankings }) {
             {rankings[activeTab].model}
           </div>
           <div className="whitespace-nowrap rounded-full border border-blue-200 bg-blue-100 px-2.5 py-1 text-xs text-blue-900">
-            {formatUsage(rankings[activeTab].usage)}
+            {formatUsage(rankings[activeTab].usage, t, language)}
           </div>
         </div>
         <div className="markdown-content text-sm leading-relaxed text-slate-800">
@@ -78,7 +86,7 @@ export default function Stage2({ rankings, labelToModel, aggregateRankings }) {
         {rankings[activeTab].parsed_ranking &&
          rankings[activeTab].parsed_ranking.length > 0 && (
           <div className="mt-4 border-t-2 border-slate-200 pt-4">
-            <strong className="text-[13px] text-sky-600">Extracted Ranking:</strong>
+            <strong className="text-[13px] text-sky-600">{t('stage.extractedRanking')}</strong>
             <ol>
               {rankings[activeTab].parsed_ranking.map((label, i) => (
                 <li key={i} className="my-1 font-mono text-[13px] text-slate-800">
@@ -94,9 +102,9 @@ export default function Stage2({ rankings, labelToModel, aggregateRankings }) {
 
       {aggregateRankings && aggregateRankings.length > 0 && (
         <div className="mb-5 rounded-lg border-2 border-blue-200 bg-blue-50 p-4">
-          <h4 className="mb-3 text-[15px] font-semibold text-blue-600">Aggregate Rankings (Street Cred)</h4>
+          <h4 className="mb-3 text-[15px] font-semibold text-blue-600">{t('stage.aggregateRankingsTitle')}</h4>
           <p className="mb-3 text-[13px] leading-relaxed text-slate-500">
-            Combined results across all peer evaluations (lower score is better):
+            {t('stage.aggregateRankingsDescription')}
           </p>
           <div className="flex flex-col gap-2">
             {aggregateRankings.map((agg, index) => (
@@ -109,10 +117,10 @@ export default function Stage2({ rankings, labelToModel, aggregateRankings }) {
                   {agg.model.split('/')[1] || agg.model}
                 </span>
                 <span className="font-mono text-[13px] text-slate-500">
-                  Avg: {agg.average_rank.toFixed(2)}
+                  {t('common.averagePrefix')}: {agg.average_rank.toFixed(2)}
                 </span>
                 <span className="text-xs text-slate-400">
-                  ({agg.rankings_count} votes)
+                  ({t('common.votes', { count: agg.rankings_count.toLocaleString(language) })})
                 </span>
               </div>
             ))}

@@ -1,12 +1,15 @@
 import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import { useI18n } from '../../i18n';
 
-function formatUsage(usage) {
+function formatUsage(usage, t, language) {
   if (!usage || typeof usage !== 'object') return null;
 
   const totalTokens = Number(usage.total_tokens ?? 0);
   const cost = Number(usage.cost ?? usage.total_cost ?? 0);
-  const parts = [`${totalTokens.toLocaleString()} tokens`];
+  const parts = [
+    t('common.usageTokens', { count: totalTokens.toLocaleString(language) }),
+  ];
 
   if (Number.isFinite(cost) && cost > 0) {
     parts.push(`$${cost.toFixed(6)}`);
@@ -15,7 +18,8 @@ function formatUsage(usage) {
   return parts.join(' · ');
 }
 
-export default function Stage1({ responses }) {
+export default function Stage1({ responses, className = '' }) {
+  const { language, t } = useI18n();
   const [activeTab, setActiveTab] = useState(0);
 
   if (!responses || responses.length === 0) {
@@ -23,8 +27,8 @@ export default function Stage1({ responses }) {
   }
 
   return (
-    <div className="my-6 rounded-lg border border-slate-200 bg-slate-50 p-5">
-      <h3 className="mb-4 text-base font-semibold text-slate-800">Stage 1: Individual Responses</h3>
+    <div className={`my-6 rounded-lg border border-slate-200 bg-slate-50 p-5 ${className}`.trim()}>
+      <h3 className="mb-4 text-base font-semibold text-slate-800">{t('stage.stage1Title')}</h3>
 
       <div className="mb-4 flex flex-wrap gap-2">
         {responses.map((resp, index) => (
@@ -46,7 +50,7 @@ export default function Stage1({ responses }) {
         <div className="mb-3 flex items-center justify-between gap-3">
           <div className="font-mono text-xs text-slate-400">{responses[activeTab].model}</div>
           <div className="whitespace-nowrap rounded-full border border-blue-200 bg-blue-100 px-2.5 py-1 text-xs text-blue-900">
-            {formatUsage(responses[activeTab].usage)}
+            {formatUsage(responses[activeTab].usage, t, language)}
           </div>
         </div>
         <div className="markdown-content leading-relaxed text-slate-800">
