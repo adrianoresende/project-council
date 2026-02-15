@@ -17,7 +17,6 @@ export default function Sidebar({
   conversations,
   isConversationsLoading,
   conversationListTab,
-  onChangeConversationTab,
   onArchiveConversation,
   currentConversationId,
   onSelectConversation,
@@ -46,13 +45,6 @@ export default function Sidebar({
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, []);
-  const listTabClass = (active) =>
-    `btn flex-1 px-2.5 py-2 text-xs font-semibold ${
-      active
-        ? "border-sky-500 bg-sky-50 text-sky-700"
-        : "border-slate-300 bg-white text-slate-600 hover:border-sky-400 hover:text-sky-700"
-    }`;
-
   const quotaLabel =
     userPlan === "pro"
       ? credits === 1
@@ -124,7 +116,7 @@ export default function Sidebar({
                     {createdAtText}
                   </div>
                 )}
-                <div className="mt-2">
+                <div className="mt-2 hidden">
                   <button
                     type="button"
                     className="btn rounded-md border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-600 hover:bg-slate-50"
@@ -143,23 +135,6 @@ export default function Sidebar({
             );
           })
         )}
-      </div>
-
-      <div className="flex gap-2 border-t border-slate-200 p-2">
-        <button
-          type="button"
-          className={listTabClass(conversationListTab === "chats")}
-          onClick={() => onChangeConversationTab("chats")}
-        >
-          {t("sidebar.chatsTab")}
-        </button>
-        <button
-          type="button"
-          className={listTabClass(conversationListTab === "arquived")}
-          onClick={() => onChangeConversationTab("arquived")}
-        >
-          {t("sidebar.archivedTab")}
-        </button>
       </div>
 
       <div className="flex flex-col gap-3 border-t border-slate-200 px-4 py-3">

@@ -210,14 +210,6 @@ export default function ChatInterface({
     <div className="flex h-screen flex-1 bg-white">
       <div className="min-w-0 flex flex-1 flex-col">
         <div className="flex-1 overflow-y-auto p-6">
-          {conversation.usage && (
-            <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-3.5 py-2.5 text-[13px] text-blue-900">
-              {t('chat.conversationUsage', {
-                value: formatUsageSummary(conversation.usage, t, language),
-              })}
-            </div>
-          )}
-
           {conversation.messages.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center px-4 text-center text-slate-500">
               <h2 className="mb-2 text-2xl text-slate-800">{t('chat.startConversationTitle')}</h2>
@@ -226,14 +218,10 @@ export default function ChatInterface({
           ) : (
             conversation.messages.map((msg, index) => {
               const finalResponse = msg.stage3?.response || msg.content || '';
-              const shouldShowDeliberation = Boolean(
-                msg.stage1
-                || msg.stage2
-                || msg.stage3
-                || msg.loading?.stage1
-                || msg.loading?.stage2
-                || msg.loading?.stage3
+              const isTurnStillProcessing = Boolean(
+                msg.loading?.stage1 || msg.loading?.stage2 || msg.loading?.stage3
               );
+              const shouldShowDeliberation = Boolean(msg.stage3 && !isTurnStillProcessing);
 
               return (
                 <div key={index} className="mb-8">
