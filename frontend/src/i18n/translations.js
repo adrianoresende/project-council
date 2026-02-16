@@ -17,6 +17,8 @@ export const translations = {
       averagePrefix: "Avg",
       votes: "{{count}} votes",
       send: "Send",
+      stop: "Stop",
+      close: "Close",
       loading: "Loading...",
     },
     auth: {
@@ -63,7 +65,9 @@ export const translations = {
       youLabel: "You",
       councilAnswerLabel: "Council Answer",
       draftingFinalAnswer: "Drafting final answer...",
+      generationStopped: "Generation stopped by user.",
       viewDeliberation: "View deliberation",
+      cancelledSuffix: "(cancelled)",
       stage1Processing: "Stage 1 is processing.",
       stage1NotAvailable: "Stage 1 data is not available for this message.",
       stage2Processing: "Stage 2 is processing.",
@@ -171,6 +175,8 @@ export const translations = {
       averagePrefix: "Prom",
       votes: "{{count}} votos",
       send: "Enviar",
+      stop: "Detener",
+      close: "Cerrar",
       loading: "Cargando...",
     },
     auth: {
@@ -218,7 +224,9 @@ export const translations = {
       youLabel: "Tú",
       councilAnswerLabel: "Respuesta del consejo",
       draftingFinalAnswer: "Redactando respuesta final...",
+      generationStopped: "Generación detenida por el usuario.",
       viewDeliberation: "Ver deliberación",
+      cancelledSuffix: "(cancelada)",
       stage1Processing: "La Etapa 1 está en proceso.",
       stage1NotAvailable:
         "Los datos de la Etapa 1 no están disponibles para este mensaje.",
@@ -331,6 +339,8 @@ export const translations = {
       averagePrefix: "Méd",
       votes: "{{count}} votos",
       send: "Enviar",
+      stop: "Parar",
+      close: "Fechar",
       loading: "Carregando...",
     },
     auth: {
@@ -378,7 +388,9 @@ export const translations = {
       youLabel: "Você",
       councilAnswerLabel: "Resposta do conselho",
       draftingFinalAnswer: "Escrevendo resposta final...",
+      generationStopped: "Geração interrompida pelo usuário.",
       viewDeliberation: "Ver deliberação",
+      cancelledSuffix: "(cancelada)",
       stage1Processing: "O Estágio 1 está em processamento.",
       stage1NotAvailable:
         "Os dados do Estágio 1 não estão disponíveis para esta mensagem.",

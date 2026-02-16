@@ -23,6 +23,8 @@ export default function ChatPage({
   onLogout,
   conversation,
   onSendMessage,
+  onCancelMessage,
+  canCancelMessage,
   isLoading,
 }) {
   return (
@@ -54,6 +56,8 @@ export default function ChatPage({
         <ChatInterface
           conversation={conversation}
           onSendMessage={onSendMessage}
+          onCancelMessage={onCancelMessage}
+          canCancelMessage={canCancelMessage}
           isLoading={isLoading}
         />
       )}

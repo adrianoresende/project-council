@@ -32,6 +32,16 @@ function inferPlanFromUser(user) {
   );
 }
 
+function emptyUsageSummary() {
+  return {
+    input_tokens: 0,
+    output_tokens: 0,
+    total_tokens: 0,
+    total_cost: 0,
+    model_calls: 0,
+  };
+}
+
 function App() {
   const { t } = useI18n();
   const [user, setUser] = useState(null);
@@ -48,13 +58,22 @@ function App() {
   const [currentConversationId, setCurrentConversationId] = useState(null);
   const [currentConversation, setCurrentConversation] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [canCancelMessage, setCanCancelMessage] = useState(false);
   const latestConversationRequestRef = useRef(0);
+  const streamAbortControllerRef = useRef(null);
+  const hasReceivedFirstStreamSignalRef = useRef(false);
+  const currentConversationRef = useRef(null);
+  const currentConversationIdRef = useRef(null);
   const conversationListCacheRef = useRef({
     chats: null,
     arquived: null,
   });
 
   const clearChatState = useCallback(() => {
+    if (streamAbortControllerRef.current) {
+      streamAbortControllerRef.current.abort();
+      streamAbortControllerRef.current = null;
+    }
     setConversations([]);
     setPendingConversationLoads(0);
     setConversationListTab('chats');
@@ -63,8 +82,18 @@ function App() {
     setCurrentConversationId(null);
     setCurrentConversation(null);
     setIsLoading(false);
+    setCanCancelMessage(false);
+    hasReceivedFirstStreamSignalRef.current = false;
     conversationListCacheRef.current = { chats: null, arquived: null };
   }, []);
+
+  useEffect(() => {
+    currentConversationRef.current = currentConversation;
+  }, [currentConversation]);
+
+  useEffect(() => {
+    currentConversationIdRef.current = currentConversationId;
+  }, [currentConversationId]);
 
   const handleUnauthorized = useCallback(() => {
     api.clearAccessToken();
@@ -164,6 +193,40 @@ function App() {
         return;
       }
       console.error('Failed to load conversation:', error);
+    }
+  }, [handleUnauthorized]);
+
+  const refreshConversationAfterCancel = useCallback(async (
+    conversationId,
+    minimumMessageCount
+  ) => {
+    const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const maxAttempts = 8;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      if (currentConversationIdRef.current !== conversationId) {
+        return;
+      }
+
+      try {
+        const conv = await api.getConversation(conversationId);
+        const fetchedMessages = Array.isArray(conv?.messages) ? conv.messages : [];
+        const fetchedCount = fetchedMessages.length;
+        const lastFetchedMessage = fetchedMessages[fetchedMessages.length - 1];
+        const hasAssistantTurnPersisted = lastFetchedMessage?.role === 'assistant';
+        if (fetchedCount >= minimumMessageCount && hasAssistantTurnPersisted) {
+          setCurrentConversation(conv);
+          return;
+        }
+      } catch (error) {
+        if (error.status === 401) {
+          handleUnauthorized();
+          return;
+        }
+        console.error('Failed to refresh cancelled conversation:', error);
+      }
+
+      await wait(attempt < 3 ? 600 : 1000);
     }
   }, [handleUnauthorized]);
 
@@ -303,6 +366,11 @@ function App() {
 
   const handleSendMessage = async (content) => {
     if (!currentConversationId) return;
+    const activeConversationId = currentConversationId;
+    const abortController = new AbortController();
+    streamAbortControllerRef.current = abortController;
+    hasReceivedFirstStreamSignalRef.current = false;
+    setCanCancelMessage(false);
 
     setIsLoading(true);
     try {
@@ -330,7 +398,12 @@ function App() {
         messages: [...prev.messages, assistantMessage],
       }));
 
-      await api.sendMessageStream(currentConversationId, content, (eventType, event) => {
+      await api.sendMessageStream(activeConversationId, content, (eventType, event) => {
+        if (!hasReceivedFirstStreamSignalRef.current) {
+          hasReceivedFirstStreamSignalRef.current = true;
+          setCanCancelMessage(true);
+        }
+
         switch (eventType) {
           case 'stage1_start':
             setCurrentConversation((prev) => {
@@ -410,22 +483,72 @@ function App() {
               };
             });
             loadCredits();
-            loadConversation(currentConversationId);
+            loadConversation(activeConversationId);
             conversationListCacheRef.current[conversationListTab] = null;
             loadConversations({ force: true });
+            streamAbortControllerRef.current = null;
+            setCanCancelMessage(false);
             setIsLoading(false);
             break;
 
           case 'error':
             console.error('Stream error:', event.message);
+            streamAbortControllerRef.current = null;
+            setCanCancelMessage(false);
             setIsLoading(false);
             break;
 
           default:
             console.log('Unknown event type:', eventType);
         }
-      });
+      }, { signal: abortController.signal });
     } catch (error) {
+      const isAbortError = error?.name === 'AbortError';
+      if (isAbortError) {
+        const minimumExpectedMessages = Math.max(
+          2,
+          Array.isArray(currentConversationRef.current?.messages)
+            ? currentConversationRef.current.messages.length
+            : 0
+        );
+
+        setCurrentConversation((prev) => {
+          if (!prev) return prev;
+          const messages = [...prev.messages];
+          const lastMsg = messages[messages.length - 1];
+          if (lastMsg?.role === 'assistant') {
+            lastMsg.loading = {
+              stage1: false,
+              stage2: false,
+              stage3: false,
+            };
+            if (!lastMsg.stage3) {
+              lastMsg.stage3 = {
+                model: 'system/cancelled',
+                response: t('chat.generationStopped'),
+                usage: emptyUsageSummary(),
+                cancelled: true,
+              };
+            }
+          }
+          return { ...prev, messages };
+        });
+        streamAbortControllerRef.current = null;
+        setCanCancelMessage(false);
+        setIsLoading(false);
+
+        (async () => {
+          await refreshConversationAfterCancel(
+            activeConversationId,
+            minimumExpectedMessages
+          );
+          loadCredits();
+          conversationListCacheRef.current[conversationListTab] = null;
+          loadConversations({ force: true });
+        })();
+        return;
+      }
+
       if (error.status === 401) {
         handleUnauthorized();
         return;
@@ -443,6 +566,8 @@ function App() {
       }
 
       console.error('Failed to send message:', error);
+      streamAbortControllerRef.current = null;
+      setCanCancelMessage(false);
       setCurrentConversation((prev) => ({
         ...prev,
         messages: prev.messages.slice(0, -2),
@@ -450,6 +575,11 @@ function App() {
       setIsLoading(false);
     }
   };
+
+  const handleCancelMessage = useCallback(() => {
+    if (!isLoading) return;
+    streamAbortControllerRef.current?.abort();
+  }, [isLoading]);
 
   const canCreateConversation = credits > 0;
   const createConversationDisabledReason =
@@ -490,6 +620,8 @@ function App() {
       onLogout={handleLogout}
       conversation={currentConversation}
       onSendMessage={handleSendMessage}
+      onCancelMessage={handleCancelMessage}
+      canCancelMessage={canCancelMessage}
       isLoading={isLoading}
     />
   );

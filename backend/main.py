@@ -7,6 +7,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any
 from datetime import datetime, timezone
+from contextlib import suppress
 import uuid
 import json
 import asyncio
@@ -956,7 +957,8 @@ async def send_message(
 @app.post("/api/conversations/{conversation_id}/message/stream")
 async def send_message_stream(
     conversation_id: str,
-    request: SendMessageRequest,
+    message_request: SendMessageRequest,
+    http_request: Request,
     user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
@@ -991,64 +993,64 @@ async def send_message_stream(
 
     async def event_generator():
         remaining_balance_current = remaining_balance_after
-        try:
-            # Add user message
-            await storage.add_user_message(
-                conversation_id,
-                user["id"],
-                request.content,
-                id_session=conversation_session_id,
-            )
+        stage1_results: List[Dict[str, Any]] = []
+        stage2_results: List[Dict[str, Any]] = []
+        stage3_result: Dict[str, Any] | None = None
+        label_to_model: Dict[str, str] = {}
+        aggregate_rankings: List[Dict[str, Any]] = []
+        title_task: asyncio.Task | None = None
+        free_query_consumed = False
+        user_message_saved = False
+        stage1_started = False
+        stage2_started = False
+        stage3_started = False
 
-            # Start title generation in parallel (don't await yet)
-            title_task = None
-            if is_first_message:
-                title_task = asyncio.create_task(
-                    generate_conversation_title(
-                        request.content,
-                        session_id=conversation_session_id,
-                    )
-                )
+        async def resolve_title_result(wait_for_completion: bool) -> Dict[str, Any] | None:
+            if title_task is None:
+                return None
 
-            # Stage 1: Collect responses
-            yield f"data: {json.dumps({'type': 'stage1_start'})}\n\n"
-            stage1_results = await stage1_collect_responses(
-                request.content,
-                conversation_history=conversation_history,
-                session_id=conversation_session_id,
-            )
-            yield f"data: {json.dumps({'type': 'stage1_complete', 'data': stage1_results})}\n\n"
+            if wait_for_completion:
+                return await title_task
 
-            # Free plan: count one query only after Stage 1 is complete,
-            # immediately before Stage 2 begins.
-            if plan == "free" and is_first_message and stage1_results:
-                remaining_balance_current = await storage.consume_account_tokens(
-                    user["id"],
-                    1,
-                    FREE_DAILY_QUERY_LIMIT,
-                )
+            if title_task.done():
+                try:
+                    return title_task.result()
+                except Exception:
+                    return None
 
-            # Stage 2: Collect rankings
-            yield f"data: {json.dumps({'type': 'stage2_start'})}\n\n"
-            stage2_results, label_to_model = await stage2_collect_rankings(
-                request.content,
-                stage1_results,
-                conversation_history=conversation_history,
-                session_id=conversation_session_id,
-            )
-            aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
-            yield f"data: {json.dumps({'type': 'stage2_complete', 'data': stage2_results, 'metadata': {'label_to_model': label_to_model, 'aggregate_rankings': aggregate_rankings}})}\n\n"
+            title_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await title_task
+            return None
 
-            # Stage 3: Synthesize final answer
-            yield f"data: {json.dumps({'type': 'stage3_start'})}\n\n"
-            stage3_result = await stage3_synthesize_final(
-                request.content,
-                stage1_results,
-                stage2_results,
-                conversation_history=conversation_history,
-                session_id=conversation_session_id,
-            )
-            yield f"data: {json.dumps({'type': 'stage3_complete', 'data': stage3_result})}\n\n"
+        async def persist_turn(
+            *,
+            cancelled: bool,
+            title_result: Dict[str, Any] | None = None,
+            wait_for_title: bool = False,
+            save_title: bool = True,
+        ) -> tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any] | None]:
+            nonlocal remaining_balance_current, stage3_result, free_query_consumed
+            nonlocal stage1_started, stage2_started, stage3_started
+
+            resolved_title = title_result
+            if resolved_title is None:
+                resolved_title = await resolve_title_result(wait_for_completion=wait_for_title)
+
+            if cancelled and stage3_result is None:
+                stage3_result = {
+                    "model": "system/cancelled",
+                    "response": "Generation stopped by user.",
+                    "usage": empty_usage_summary(),
+                    "cancelled": True,
+                }
+
+            if stage3_result is None:
+                stage3_result = {
+                    "model": "system/error",
+                    "response": "No final response available.",
+                    "usage": empty_usage_summary(),
+                }
 
             metadata = {
                 "label_to_model": label_to_model,
@@ -1056,21 +1058,24 @@ async def send_message_stream(
                 "usage": summarize_council_usage(stage1_results, stage2_results, stage3_result),
             }
 
-            # Wait for title generation if it was started
-            if title_task:
-                title_result = await title_task
-                title = title_result.get("title", "New Conversation")
-                title_usage = title_result.get("usage", empty_usage_summary())
-                await storage.update_conversation_title(conversation_id, user["id"], title)
-                yield f"data: {json.dumps({'type': 'title_complete', 'data': {'title': title}})}\n\n"
+            if isinstance(resolved_title, dict):
+                title = resolved_title.get("title", "New Conversation")
+                title_usage = resolved_title.get("usage", empty_usage_summary())
+                if save_title:
+                    await storage.update_conversation_title(conversation_id, user["id"], title)
+
                 metadata["title_usage"] = title_usage
                 metadata_usage = metadata.get("usage", empty_usage_summary())
                 metadata["usage"] = {
-                    "input_tokens": int(metadata_usage.get("input_tokens", 0)) + int(title_usage.get("input_tokens", 0)),
-                    "output_tokens": int(metadata_usage.get("output_tokens", 0)) + int(title_usage.get("output_tokens", 0)),
-                    "total_tokens": int(metadata_usage.get("total_tokens", 0)) + int(title_usage.get("total_tokens", 0)),
+                    "input_tokens": int(metadata_usage.get("input_tokens", 0))
+                    + int(title_usage.get("input_tokens", 0)),
+                    "output_tokens": int(metadata_usage.get("output_tokens", 0))
+                    + int(title_usage.get("output_tokens", 0)),
+                    "total_tokens": int(metadata_usage.get("total_tokens", 0))
+                    + int(title_usage.get("total_tokens", 0)),
                     "total_cost": round(
-                        float(metadata_usage.get("total_cost", 0.0)) + float(title_usage.get("cost", 0.0) or 0.0),
+                        float(metadata_usage.get("total_cost", 0.0))
+                        + float(title_usage.get("cost", 0.0) or 0.0),
                         8,
                     ),
                     "model_calls": int(metadata_usage.get("model_calls", 0)) + 1,
@@ -1078,16 +1083,41 @@ async def send_message_stream(
                 stage3_result["title_usage"] = title_usage
 
             if plan == "pro":
-                tokens_to_consume = max(0, int((metadata.get("usage") or {}).get("total_tokens", 0)))
-                remaining_balance_current = await storage.consume_account_tokens(
-                    user["id"],
-                    tokens_to_consume,
-                    PRO_DAILY_TOKEN_CREDITS,
-                )
-            elif not is_first_message:
-                remaining_balance_current = await _get_remaining_daily_queries(user)
+                usage_summary = metadata.get("usage") or {}
+                tokens_to_consume = max(0, int(usage_summary.get("total_tokens", 0)))
+                model_calls = max(0, int(usage_summary.get("model_calls", 0)))
+                started_any_stage = stage1_started or stage2_started or stage3_started
 
-            # Save complete assistant message
+                # Fallback: when cancellation interrupts usage reporting but model
+                # work already started, charge at least 1 token.
+                if cancelled and tokens_to_consume <= 0 and (model_calls > 0 or started_any_stage):
+                    tokens_to_consume = 1
+
+                if tokens_to_consume > 0:
+                    remaining_balance_current = await storage.consume_account_tokens(
+                        user["id"],
+                        tokens_to_consume,
+                        PRO_DAILY_TOKEN_CREDITS,
+                    )
+                else:
+                    remaining_balance_current = await _get_remaining_daily_tokens(user)
+            elif plan == "free":
+                if is_first_message and stage1_results and not free_query_consumed:
+                    remaining_balance_current = await storage.consume_account_tokens(
+                        user["id"],
+                        1,
+                        FREE_DAILY_QUERY_LIMIT,
+                    )
+                    free_query_consumed = True
+                elif is_first_message and not free_query_consumed:
+                    remaining_balance_current = await _get_remaining_daily_queries(user)
+                elif not is_first_message:
+                    remaining_balance_current = await _get_remaining_daily_queries(user)
+
+            if not user_message_saved:
+                updated_conversation = await storage.get_conversation(conversation_id, user["id"]) or {}
+                return metadata, updated_conversation, resolved_title
+
             await storage.add_assistant_message(
                 conversation_id,
                 user["id"],
@@ -1096,11 +1126,110 @@ async def send_message_stream(
                 stage3_result,
                 id_session=conversation_session_id,
             )
-            updated_conversation = await storage.get_conversation(conversation_id, user["id"])
+            updated_conversation = await storage.get_conversation(conversation_id, user["id"]) or {}
+            return metadata, updated_conversation, resolved_title
+
+        try:
+            # Add user message
+            await storage.add_user_message(
+                conversation_id,
+                user["id"],
+                message_request.content,
+                id_session=conversation_session_id,
+            )
+            user_message_saved = True
+
+            # Start title generation in parallel (don't await yet)
+            if is_first_message:
+                title_task = asyncio.create_task(
+                    generate_conversation_title(
+                        message_request.content,
+                        session_id=conversation_session_id,
+                    )
+                )
+
+            # Stage 1: Collect responses
+            stage1_started = True
+            yield f"data: {json.dumps({'type': 'stage1_start'})}\n\n"
+            stage1_results = await stage1_collect_responses(
+                message_request.content,
+                conversation_history=conversation_history,
+                session_id=conversation_session_id,
+            )
+
+            # Free plan: count one query only after Stage 1 is complete,
+            # immediately before Stage 2 begins.
+            if plan == "free" and is_first_message and stage1_results and not free_query_consumed:
+                remaining_balance_current = await storage.consume_account_tokens(
+                    user["id"],
+                    1,
+                    FREE_DAILY_QUERY_LIMIT,
+                )
+                free_query_consumed = True
+
+            if await http_request.is_disconnected():
+                await persist_turn(cancelled=True, wait_for_title=False)
+                return
+
+            yield f"data: {json.dumps({'type': 'stage1_complete', 'data': stage1_results})}\n\n"
+
+            # Stage 2: Collect rankings
+            stage2_started = True
+            yield f"data: {json.dumps({'type': 'stage2_start'})}\n\n"
+            stage2_results, label_to_model = await stage2_collect_rankings(
+                message_request.content,
+                stage1_results,
+                conversation_history=conversation_history,
+                session_id=conversation_session_id,
+            )
+            aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
+
+            if await http_request.is_disconnected():
+                await persist_turn(cancelled=True, wait_for_title=False)
+                return
+
+            yield f"data: {json.dumps({'type': 'stage2_complete', 'data': stage2_results, 'metadata': {'label_to_model': label_to_model, 'aggregate_rankings': aggregate_rankings}})}\n\n"
+
+            # Stage 3: Synthesize final answer
+            stage3_started = True
+            yield f"data: {json.dumps({'type': 'stage3_start'})}\n\n"
+            stage3_result = await stage3_synthesize_final(
+                message_request.content,
+                stage1_results,
+                stage2_results,
+                conversation_history=conversation_history,
+                session_id=conversation_session_id,
+            )
+
+            if await http_request.is_disconnected():
+                await persist_turn(cancelled=True, wait_for_title=False)
+                return
+
+            yield f"data: {json.dumps({'type': 'stage3_complete', 'data': stage3_result})}\n\n"
+
+            title_result = await resolve_title_result(wait_for_completion=True)
+            metadata, updated_conversation, resolved_title = await persist_turn(
+                cancelled=False,
+                title_result=title_result,
+                save_title=True,
+            )
+
+            if isinstance(resolved_title, dict):
+                title = resolved_title.get("title", "New Conversation")
+                yield f"data: {json.dumps({'type': 'title_complete', 'data': {'title': title}})}\n\n"
 
             # Send completion event
             yield f"data: {json.dumps({'type': 'complete', 'metadata': metadata, 'credits': remaining_balance_current, 'conversation_usage': (updated_conversation or {}).get('usage', empty_usage_summary())})}\n\n"
 
+        except asyncio.CancelledError:
+            # Client disconnected abruptly. Persist partial work and usage.
+            await asyncio.shield(
+                persist_turn(
+                    cancelled=True,
+                    wait_for_title=False,
+                )
+            )
+            raise
         except Exception as e:
             # Send error event
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"

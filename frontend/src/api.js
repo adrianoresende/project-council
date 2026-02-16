@@ -188,7 +188,8 @@ export const api = {
    * @param {function} onEvent - Callback function for each event: (eventType, data) => void
    * @returns {Promise<void>}
    */
-  async sendMessageStream(conversationId, content, onEvent) {
+  async sendMessageStream(conversationId, content, onEvent, options = {}) {
+    const { signal } = options;
     const response = await fetch(
       `${API_BASE}/api/conversations/${conversationId}/message/stream`,
       {
@@ -198,6 +199,7 @@ export const api = {
           ...getAuthHeaders(),
         },
         body: JSON.stringify({ content }),
+        signal,
       }
     );
 
@@ -210,25 +212,46 @@ export const api = {
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
+    let buffer = '';
+
+    const parseEventBlock = (eventBlock) => {
+      if (!eventBlock) return;
+
+      const dataLines = eventBlock
+        .split('\n')
+        .filter((line) => line.startsWith('data:'))
+        .map((line) => line.slice(5).trimStart());
+
+      if (dataLines.length === 0) return;
+
+      const data = dataLines.join('\n');
+      try {
+        const event = JSON.parse(data);
+        onEvent(event.type, event);
+      } catch (error) {
+        console.error('Failed to parse SSE event:', error);
+      }
+    };
 
     while (true) {
       const { done, value } = await reader.read();
-      if (done) break;
+      buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+      buffer = buffer.replace(/\r\n/g, '\n');
 
-      const chunk = decoder.decode(value);
-      const lines = chunk.split('\n');
-
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const data = line.slice(6);
-          try {
-            const event = JSON.parse(data);
-            onEvent(event.type, event);
-          } catch (error) {
-            console.error('Failed to parse SSE event:', error);
-          }
-        }
+      let separatorIndex = buffer.indexOf('\n\n');
+      while (separatorIndex !== -1) {
+        const eventBlock = buffer.slice(0, separatorIndex).trim();
+        parseEventBlock(eventBlock);
+        buffer = buffer.slice(separatorIndex + 2);
+        separatorIndex = buffer.indexOf('\n\n');
       }
+
+      if (done) break;
+    }
+
+    const trailing = buffer.trim();
+    if (trailing) {
+      parseEventBlock(trailing);
     }
   },
 };

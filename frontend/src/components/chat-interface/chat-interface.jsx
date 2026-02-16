@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { IconLoader2, IconX } from '@tabler/icons-react';
 import ReactMarkdown from 'react-markdown';
 import Stage1 from '../stage-1/stage-1';
 import Stage2 from '../stage-2/stage-2';
@@ -48,6 +49,14 @@ function getLatestAssistantMessage(messages) {
   return null;
 }
 
+function isMessageProcessing(message) {
+  return Boolean(
+    message?.loading?.stage1
+      || message?.loading?.stage2
+      || message?.loading?.stage3
+  );
+}
+
 function getStageStatus(message, key) {
   if (message?.loading?.[key]) return 'running';
   if (message?.[key]) return 'completed';
@@ -76,7 +85,7 @@ function getStageDetail(message, key, t, language) {
   return null;
 }
 
-function ProcessingSidebar({ message, language, t }) {
+function ProcessingSidebar({ message, language, t, canClose, onClose }) {
   const stages = [
     {
       key: 'stage1',
@@ -107,7 +116,21 @@ function ProcessingSidebar({ message, language, t }) {
   return (
     <aside className="hidden h-screen w-[320px] shrink-0 border-l border-slate-200 bg-slate-50 lg:flex lg:flex-col">
       <div className="border-b border-slate-200 px-5 py-4">
-        <div className="text-xs font-semibold uppercase tracking-[0.4px] text-slate-500">{t('chat.progressTitle')}</div>
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-xs font-semibold uppercase tracking-[0.4px] text-slate-500">
+            {t('chat.progressTitle')}
+          </div>
+          {canClose && (
+            <button
+              type="button"
+              className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-600 transition-colors hover:border-slate-400 hover:text-slate-900"
+              aria-label={t('common.close')}
+              onClick={onClose}
+            >
+              <IconX size={15} />
+            </button>
+          )}
+        </div>
         <p className="mt-2 text-sm text-slate-600">
           {t('chat.stageProgress', {
             completed: completedCount.toLocaleString(language),
@@ -157,10 +180,13 @@ function StagePlaceholder({ text }) {
 export default function ChatInterface({
   conversation,
   onSendMessage,
+  onCancelMessage,
+  canCancelMessage,
   isLoading,
 }) {
   const { language, t } = useI18n();
   const [input, setInput] = useState('');
+  const [closedSidebarKey, setClosedSidebarKey] = useState(null);
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => {
@@ -202,9 +228,16 @@ export default function ChatInterface({
     );
   }
 
-  const processingMessage = isLoading
-    ? getLatestAssistantMessage(conversation.messages)
+  const processingMessage = getLatestAssistantMessage(conversation.messages);
+  const isProcessingRunning = isLoading || isMessageProcessing(processingMessage);
+  const currentSidebarKey = conversation?.id
+    ? `${conversation.id}:${conversation.messages.length}`
     : null;
+  const canCloseProcessingSidebar = Boolean(processingMessage) && !isProcessingRunning;
+  const shouldShowProcessingSidebar = Boolean(
+    processingMessage
+      && (isProcessingRunning || closedSidebarKey !== currentSidebarKey)
+  );
 
   return (
     <div className="flex h-screen flex-1 bg-white">
@@ -218,10 +251,20 @@ export default function ChatInterface({
           ) : (
             conversation.messages.map((msg, index) => {
               const finalResponse = msg.stage3?.response || msg.content || '';
-              const isTurnStillProcessing = Boolean(
-                msg.loading?.stage1 || msg.loading?.stage2 || msg.loading?.stage3
+              const isTurnStillProcessing = isMessageProcessing(msg);
+              const isCancelledTurn = Boolean(msg.stage3?.cancelled);
+              const hasAnyDeliberationData = Boolean(
+                (Array.isArray(msg.stage1) && msg.stage1.length > 0)
+                || (Array.isArray(msg.stage2) && msg.stage2.length > 0)
+                || msg.stage3
               );
-              const shouldShowDeliberation = Boolean(msg.stage3 && !isTurnStillProcessing);
+              const shouldShowDeliberation = Boolean(
+                !isTurnStillProcessing
+                && (hasAnyDeliberationData || isCancelledTurn)
+              );
+              const deliberationSummary = isCancelledTurn
+                ? `${t('chat.viewDeliberation')} ${t('chat.cancelledSuffix')}`
+                : t('chat.viewDeliberation');
 
               return (
                 <div key={index} className="mb-8">
@@ -265,20 +308,24 @@ export default function ChatInterface({
                             <ReactMarkdown>{finalResponse}</ReactMarkdown>
                           </div>
                         </div>
-                      ) : (
+                      ) : isTurnStillProcessing ? (
                         <div className="my-3 flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm italic text-slate-500">
                           <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-200 border-t-sky-500"></div>
                           <span>{t('chat.draftingFinalAnswer')}</span>
+                        </div>
+                      ) : (
+                        <div className="my-3 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                          {t('chat.stage3NotAvailable')}
                         </div>
                       )}
 
                       {shouldShowDeliberation && (
                         <details className="mt-4 rounded-lg border border-slate-200 bg-slate-50">
                           <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-slate-700">
-                            {t('chat.viewDeliberation')}
+                            {deliberationSummary}
                           </summary>
                           <div className="space-y-4 border-t border-slate-200 px-4 py-4">
-                            {msg.stage1 ? (
+                            {(Array.isArray(msg.stage1) && msg.stage1.length > 0) ? (
                               <Stage1 responses={msg.stage1} className="my-0" />
                             ) : (
                               <StagePlaceholder
@@ -288,7 +335,7 @@ export default function ChatInterface({
                               />
                             )}
 
-                            {msg.stage2 ? (
+                            {(Array.isArray(msg.stage2) && msg.stage2.length > 0) ? (
                               <Stage2
                                 rankings={msg.stage2}
                                 labelToModel={msg.metadata?.label_to_model}
@@ -342,18 +389,36 @@ export default function ChatInterface({
             disabled={isLoading}
             rows={3}
           />
-          <button
-            type="submit"
-            className="btn self-end whitespace-nowrap border-sky-500 bg-sky-500 px-7 py-3.5 text-[15px] font-semibold text-white hover:border-sky-600 hover:bg-sky-600 disabled:border-slate-300 disabled:bg-slate-300 disabled:opacity-50"
-            disabled={!input.trim() || isLoading}
-          >
-            {t('common.send')}
-          </button>
+          {!isLoading && (
+            <button
+              type="submit"
+              className="btn self-end whitespace-nowrap border-sky-500 bg-sky-500 px-7 py-3.5 text-[15px] font-semibold text-white hover:border-sky-600 hover:bg-sky-600 disabled:border-slate-300 disabled:bg-slate-300 disabled:opacity-50"
+              disabled={!input.trim()}
+            >
+              {t('common.send')}
+            </button>
+          )}
+          {isLoading && canCancelMessage && (
+            <button
+              type="button"
+              className="btn self-end gap-2 whitespace-nowrap border-slate-900 bg-slate-900 px-5 py-3.5 text-[15px] font-semibold text-white hover:border-black hover:bg-black"
+              onClick={onCancelMessage}
+            >
+              <IconLoader2 size={14} className="animate-spin" />
+              {t('common.stop')}
+            </button>
+          )}
         </form>
       </div>
 
-      {processingMessage && (
-        <ProcessingSidebar message={processingMessage} language={language} t={t} />
+      {shouldShowProcessingSidebar && (
+        <ProcessingSidebar
+          message={processingMessage}
+          language={language}
+          t={t}
+          canClose={canCloseProcessingSidebar}
+          onClose={() => setClosedSidebarKey(currentSidebarKey)}
+        />
       )}
     </div>
   );
