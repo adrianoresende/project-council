@@ -22,8 +22,9 @@ async function parseError(response, fallbackMessage) {
 }
 
 async function request(path, options = {}, requiresAuth = true) {
+  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
   const headers = {
-    ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+    ...(!isFormData && options.body ? { 'Content-Type': 'application/json' } : {}),
     ...(requiresAuth ? getAuthHeaders() : {}),
     ...(options.headers || {}),
   };
@@ -41,6 +42,32 @@ async function request(path, options = {}, requiresAuth = true) {
   }
 
   return response.json();
+}
+
+function buildMessageFormData(payload = {}) {
+  const formData = new FormData();
+  const content = typeof payload.content === 'string' ? payload.content : '';
+  formData.append('content', content);
+
+  const isBinaryFile = (value) => {
+    if (!value) return false;
+    if (typeof File !== 'undefined' && value instanceof File) return true;
+    if (typeof Blob !== 'undefined' && value instanceof Blob) return true;
+    return false;
+  };
+
+  const files = Array.isArray(payload.files) ? payload.files : [];
+  files.forEach((file, index) => {
+    if (isBinaryFile(file)) {
+      const fallbackName = `upload-${index + 1}`;
+      const filename = typeof file.name === 'string' && file.name.trim()
+        ? file.name
+        : fallbackName;
+      formData.append('files', file, filename);
+    }
+  });
+
+  return formData;
 }
 
 export const api = {
@@ -94,6 +121,10 @@ export const api = {
 
   async getAccountSummary() {
     return request('/api/account/summary');
+  },
+
+  async getAdminUsers() {
+    return request('/api/admin/users');
   },
 
   async getAccountPayments(limit = 20) {
@@ -174,31 +205,38 @@ export const api = {
   /**
    * Send a message in a conversation.
    */
-  async sendMessage(conversationId, content) {
+  async sendMessage(conversationId, payload) {
     return request(`/api/conversations/${conversationId}/message`, {
       method: 'POST',
-      body: JSON.stringify({ content }),
+      body: buildMessageFormData(
+        typeof payload === 'string'
+          ? { content: payload, files: [] }
+          : payload
+      ),
     });
   },
 
   /**
    * Send a message and receive streaming updates.
    * @param {string} conversationId - The conversation ID
-   * @param {string} content - The message content
+   * @param {{content: string, files?: File[]}|string} payload - Message payload
    * @param {function} onEvent - Callback function for each event: (eventType, data) => void
    * @returns {Promise<void>}
    */
-  async sendMessageStream(conversationId, content, onEvent, options = {}) {
+  async sendMessageStream(conversationId, payload, onEvent, options = {}) {
     const { signal } = options;
+    const normalizedPayload = typeof payload === 'string'
+      ? { content: payload, files: [] }
+      : payload;
+
     const response = await fetch(
       `${API_BASE}/api/conversations/${conversationId}/message/stream`,
       {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
           ...getAuthHeaders(),
         },
-        body: JSON.stringify({ content }),
+        body: buildMessageFormData(normalizedPayload),
         signal,
       }
     );

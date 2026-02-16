@@ -2,10 +2,14 @@
 
 from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
+import json
 
 import httpx
 
 from .config import SUPABASE_SECRET_KEY, SUPABASE_URL
+
+
+USER_MESSAGE_PAYLOAD_PREFIX = "__llm_council_user_message_v1__:"
 
 
 def _to_int(value: Any) -> int:
@@ -59,6 +63,77 @@ def _normalize_session_id(value: Any) -> str | None:
     if not normalized:
         return None
     return normalized[:128]
+
+
+def _normalize_user_files_payload(value: Any) -> List[Dict[str, Any]]:
+    """Normalize user-visible file metadata for safe persistence."""
+    if not isinstance(value, list):
+        return []
+
+    normalized: List[Dict[str, Any]] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+
+        name = item.get("name")
+        if not isinstance(name, str) or not name.strip():
+            continue
+
+        file_payload = {
+            "name": name.strip()[:255],
+            "kind": str(item.get("kind") or "file")[:32],
+            "mime_type": str(item.get("mime_type") or "application/octet-stream")[:127],
+            "size_bytes": max(0, _to_int(item.get("size_bytes"))),
+        }
+
+        processed_name = item.get("processed_name")
+        if isinstance(processed_name, str) and processed_name.strip():
+            file_payload["processed_name"] = processed_name.strip()[:255]
+
+        converted_to_pdf = item.get("converted_to_pdf")
+        if isinstance(converted_to_pdf, bool):
+            file_payload["converted_to_pdf"] = converted_to_pdf
+
+        normalized.append(file_payload)
+
+    return normalized
+
+
+def _encode_user_message_content(content: str, files: List[Dict[str, Any]] | None) -> str:
+    """Encode user content with optional file metadata into a text-safe payload."""
+    text = content if isinstance(content, str) else ""
+    normalized_files = _normalize_user_files_payload(files)
+    if not normalized_files:
+        return text
+
+    payload = {
+        "text": text,
+        "files": normalized_files,
+    }
+    return f"{USER_MESSAGE_PAYLOAD_PREFIX}{json.dumps(payload, separators=(',', ':'))}"
+
+
+def _decode_user_message_content(raw_content: Any) -> tuple[str, List[Dict[str, Any]]]:
+    """Decode user payload content and return plain text plus file metadata."""
+    if not isinstance(raw_content, str):
+        return "", []
+
+    if not raw_content.startswith(USER_MESSAGE_PAYLOAD_PREFIX):
+        return raw_content, []
+
+    encoded_payload = raw_content[len(USER_MESSAGE_PAYLOAD_PREFIX):]
+    try:
+        payload = json.loads(encoded_payload)
+    except json.JSONDecodeError:
+        return raw_content, []
+
+    if not isinstance(payload, dict):
+        return raw_content, []
+
+    text = payload.get("text")
+    normalized_text = text if isinstance(text, str) else ""
+    files = _normalize_user_files_payload(payload.get("files"))
+    return normalized_text, files
 
 
 def _empty_usage_summary() -> Dict[str, Any]:
@@ -316,11 +391,13 @@ async def get_conversation(conversation_id: str, user_id: str) -> Optional[Dict[
     conversation_usage = _empty_usage_summary()
     for row in message_rows or []:
         if row["role"] == "user":
+            content_text, files = _decode_user_message_content(row.get("content", ""))
             messages.append(
                 {
                     "role": "user",
                     "id_session": row.get("id_session"),
-                    "content": row.get("content", ""),
+                    "content": content_text,
+                    "files": files,
                 }
             )
             continue
@@ -434,6 +511,7 @@ async def add_user_message(
     conversation_id: str,
     user_id: str,
     content: str,
+    files: List[Dict[str, Any]] | None = None,
     id_session: str | None = None,
 ):
     """Add a user message to a user-owned conversation."""
@@ -444,7 +522,7 @@ async def add_user_message(
     payload = {
         "conversation_id": conversation_id,
         "role": "user",
-        "content": content,
+        "content": _encode_user_message_content(content, files),
     }
     normalized_session_id = _normalize_session_id(id_session)
     if normalized_session_id is not None:

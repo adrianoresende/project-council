@@ -2,6 +2,7 @@ import Sidebar from '../../components/sidebar/sidebar';
 import ChatInterface from '../../components/chat-interface/chat-interface';
 import PricingPage from '../pricing/page';
 import AccountPage from '../account/account-page';
+import AdminPage from '../admin/page';
 
 export default function ChatPage({
   mainView,
@@ -20,6 +21,7 @@ export default function ChatPage({
   accountMessage,
   userEmail,
   userPlan,
+  userRole,
   onLogout,
   conversation,
   onSendMessage,
@@ -46,14 +48,18 @@ export default function ChatPage({
         accountMessage={accountMessage}
         userEmail={userEmail}
         userPlan={userPlan}
+        userRole={userRole}
         onLogout={onLogout}
       />
       {mainView === 'pricing' ? (
         <PricingPage />
       ) : mainView === 'account' ? (
         <AccountPage />
+      ) : mainView === 'admin' ? (
+        <AdminPage />
       ) : (
         <ChatInterface
+          key={conversation?.id || 'chat-empty'}
           conversation={conversation}
           onSendMessage={onSendMessage}
           onCancelMessage={onCancelMessage}

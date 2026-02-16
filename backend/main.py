@@ -19,8 +19,12 @@ import httpx
 
 from . import storage
 from .auth import (
+    ROLE_ADMIN,
+    ensure_default_user_role_metadata,
     get_user_from_token,
+    list_users_admin,
     login_user,
+    normalize_user_role,
     register_user,
     update_user_plan_metadata,
 )
@@ -42,6 +46,13 @@ from .config import (
     FREE_DAILY_QUERY_LIMIT,
     COUNCIL_ENV,
 )
+from .files import (
+    PDF_TEXT_PLUGIN,
+    build_file_context_note,
+    extract_message_content_and_files,
+    prepare_uploaded_files_for_model,
+    resolve_message_prompt,
+)
 
 app = FastAPI(title="LLM Council API")
 bearer_scheme = HTTPBearer()
@@ -59,11 +70,6 @@ app.add_middleware(
 class CreateConversationRequest(BaseModel):
     """Request to create a new conversation."""
     pass
-
-
-class SendMessageRequest(BaseModel):
-    """Request to send a message in a conversation."""
-    content: str
 
 
 class ConversationMetadata(BaseModel):
@@ -116,6 +122,15 @@ class AccountSummaryResponse(BaseModel):
     """Account summary for profile page."""
     email: str
     plan: str
+
+
+class AdminUserResponse(BaseModel):
+    """Admin-facing user row payload."""
+    email: str
+    plan: str
+    stripe_payment_id: str | None = None
+    registration_date: str | None = None
+    last_login_date: str | None = None
 
 
 class BillingPaymentResponse(BaseModel):
@@ -200,6 +215,31 @@ def _get_user_plan(user: Dict[str, Any]) -> str:
     )
 
 
+def _get_user_role(user: Dict[str, Any]) -> str:
+    """Resolve account role from auth metadata."""
+    app_metadata = user.get("app_metadata") or {}
+    if not isinstance(app_metadata, dict):
+        app_metadata = {}
+    return normalize_user_role(app_metadata.get("role"))
+
+
+def _get_user_stripe_payment_id(user: Dict[str, Any]) -> str | None:
+    """Resolve Stripe identifier from billing metadata."""
+    app_metadata = user.get("app_metadata") or {}
+    if not isinstance(app_metadata, dict):
+        app_metadata = {}
+
+    billing_metadata = app_metadata.get("billing") or {}
+    if not isinstance(billing_metadata, dict):
+        billing_metadata = {}
+
+    for key in ("stripe_customer_id", "stripe_subscription_id"):
+        value = billing_metadata.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
 async def _get_remaining_daily_tokens(user: Dict[str, Any]) -> int:
     """Return remaining daily tokens for PRO accounts, or 0 for non-PRO."""
     if _get_user_plan(user) != "pro":
@@ -261,8 +301,13 @@ def _build_conversation_history(
 
         if role == "user":
             raw_text = message.get("content")
+            file_note = build_file_context_note(message.get("files") or [])
             if isinstance(raw_text, str) and raw_text.strip():
                 text = raw_text
+                if file_note:
+                    text = f"{raw_text}\n\n{file_note}"
+            elif file_note:
+                text = file_note
         elif role == "assistant":
             stage3 = message.get("stage3")
             if isinstance(stage3, dict):
@@ -514,6 +559,15 @@ async def get_current_user(
     return await get_user_from_token(credentials.credentials)
 
 
+async def get_current_admin_user(
+    user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Validate that the authenticated user has administrator privileges."""
+    if _get_user_role(user) != ROLE_ADMIN:
+        raise HTTPException(status_code=403, detail="Admin access required.")
+    return user
+
+
 async def get_owned_conversation(conversation_id: str, user_id: str):
     """Return conversation only when it belongs to the current user."""
     conversation = await storage.get_conversation(conversation_id, user_id)
@@ -526,10 +580,16 @@ async def get_owned_conversation(conversation_id: str, user_id: str):
 async def register(request: AuthRequest):
     """Register a new user in Supabase."""
     result = await register_user(request.email, request.password)
+    registered_user = result.get("user") or {}
+    registered_user_id = registered_user.get("id")
+    if isinstance(registered_user_id, str) and registered_user_id:
+        with suppress(HTTPException):
+            registered_user = await ensure_default_user_role_metadata(registered_user_id)
+
     session = result.get("session")
     return {
         "access_token": session.get("access_token") if session else None,
-        "user": result.get("user") or {},
+        "user": registered_user,
         "requires_email_confirmation": session is None,
     }
 
@@ -717,6 +777,38 @@ async def get_account_payments(
     return await storage.list_billing_payments(user["id"], limit)
 
 
+@app.get("/api/admin/users", response_model=List[AdminUserResponse])
+async def get_admin_users(_: Dict[str, Any] = Depends(get_current_admin_user)):
+    """Return registered users for administrators, sorted by email ascending."""
+    users = await list_users_admin()
+    rows = []
+    for user in users:
+        email = user.get("email")
+        if not isinstance(email, str):
+            email = ""
+
+        rows.append(
+            {
+                "email": email.strip(),
+                "plan": _get_user_plan(user),
+                "stripe_payment_id": _get_user_stripe_payment_id(user),
+                "registration_date": (
+                    user["created_at"].strip()
+                    if isinstance(user.get("created_at"), str)
+                    else None
+                ),
+                "last_login_date": (
+                    user["last_sign_in_at"].strip()
+                    if isinstance(user.get("last_sign_in_at"), str)
+                    else None
+                ),
+            }
+        )
+
+    rows.sort(key=lambda row: (row["email"].lower(), row["email"]))
+    return rows
+
+
 @app.post("/api/account/credits/add", response_model=CreditsResponse)
 async def add_credits(
     request: AddCreditsRequest,
@@ -799,13 +891,17 @@ async def archive_conversation(
 @app.post("/api/conversations/{conversation_id}/message")
 async def send_message(
     conversation_id: str,
-    request: SendMessageRequest,
+    http_request: Request,
     user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Send a message and run the 3-stage council process.
     Returns the complete response with all stages.
     """
+    message_content, incoming_files = await extract_message_content_and_files(http_request)
+    if not message_content.strip() and not incoming_files:
+        raise HTTPException(status_code=400, detail="Message text or file is required.")
+
     # Check if conversation exists
     conversation = await get_owned_conversation(conversation_id, user["id"])
 
@@ -832,11 +928,17 @@ async def send_message(
             )
         remaining_balance_after = remaining_queries
 
+    attachment_parts, safe_user_files, needs_pdf_parser = await prepare_uploaded_files_for_model(
+        incoming_files
+    )
+    resolved_prompt = resolve_message_prompt(message_content, safe_user_files)
+
     # Add user message
     await storage.add_user_message(
         conversation_id,
         user["id"],
-        request.content,
+        message_content,
+        files=safe_user_files,
         id_session=conversation_session_id,
     )
 
@@ -844,7 +946,7 @@ async def send_message(
     title_usage = empty_usage_summary()
     if is_first_message:
         title_result = await generate_conversation_title(
-            request.content,
+            resolved_prompt,
             session_id=conversation_session_id,
         )
         title = title_result.get("title", "New Conversation")
@@ -853,9 +955,11 @@ async def send_message(
 
     # Stage 1
     stage1_results = await stage1_collect_responses(
-        request.content,
+        resolved_prompt,
         conversation_history=conversation_history,
         session_id=conversation_session_id,
+        user_attachments=attachment_parts,
+        plugins=PDF_TEXT_PLUGIN if needs_pdf_parser else None,
     )
     stage2_results: List[Dict[str, Any]] = []
     if not stage1_results:
@@ -883,7 +987,7 @@ async def send_message(
 
         # Stage 2
         stage2_results, label_to_model = await stage2_collect_rankings(
-            request.content,
+            resolved_prompt,
             stage1_results,
             conversation_history=conversation_history,
             session_id=conversation_session_id,
@@ -892,11 +996,13 @@ async def send_message(
 
         # Stage 3
         stage3_result = await stage3_synthesize_final(
-            request.content,
+            resolved_prompt,
             stage1_results,
             stage2_results,
             conversation_history=conversation_history,
             session_id=conversation_session_id,
+            user_attachments=attachment_parts,
+            plugins=PDF_TEXT_PLUGIN if needs_pdf_parser else None,
         )
         metadata = {
             "label_to_model": label_to_model,
@@ -957,7 +1063,6 @@ async def send_message(
 @app.post("/api/conversations/{conversation_id}/message/stream")
 async def send_message_stream(
     conversation_id: str,
-    message_request: SendMessageRequest,
     http_request: Request,
     user: Dict[str, Any] = Depends(get_current_user),
 ):
@@ -965,6 +1070,10 @@ async def send_message_stream(
     Send a message and stream the 3-stage council process.
     Returns Server-Sent Events as each stage completes.
     """
+    message_content, incoming_files = await extract_message_content_and_files(http_request)
+    if not message_content.strip() and not incoming_files:
+        raise HTTPException(status_code=400, detail="Message text or file is required.")
+
     # Check if conversation exists
     conversation = await get_owned_conversation(conversation_id, user["id"])
 
@@ -990,6 +1099,11 @@ async def send_message_stream(
                 detail="Daily query limit has run out. You must wait until tomorrow for renewal.",
             )
         remaining_balance_after = remaining_queries
+
+    attachment_parts, safe_user_files, needs_pdf_parser = await prepare_uploaded_files_for_model(
+        incoming_files
+    )
+    resolved_prompt = resolve_message_prompt(message_content, safe_user_files)
 
     async def event_generator():
         remaining_balance_current = remaining_balance_after
@@ -1134,7 +1248,8 @@ async def send_message_stream(
             await storage.add_user_message(
                 conversation_id,
                 user["id"],
-                message_request.content,
+                message_content,
+                files=safe_user_files,
                 id_session=conversation_session_id,
             )
             user_message_saved = True
@@ -1143,7 +1258,7 @@ async def send_message_stream(
             if is_first_message:
                 title_task = asyncio.create_task(
                     generate_conversation_title(
-                        message_request.content,
+                        resolved_prompt,
                         session_id=conversation_session_id,
                     )
                 )
@@ -1152,9 +1267,11 @@ async def send_message_stream(
             stage1_started = True
             yield f"data: {json.dumps({'type': 'stage1_start'})}\n\n"
             stage1_results = await stage1_collect_responses(
-                message_request.content,
+                resolved_prompt,
                 conversation_history=conversation_history,
                 session_id=conversation_session_id,
+                user_attachments=attachment_parts,
+                plugins=PDF_TEXT_PLUGIN if needs_pdf_parser else None,
             )
 
             # Free plan: count one query only after Stage 1 is complete,
@@ -1177,7 +1294,7 @@ async def send_message_stream(
             stage2_started = True
             yield f"data: {json.dumps({'type': 'stage2_start'})}\n\n"
             stage2_results, label_to_model = await stage2_collect_rankings(
-                message_request.content,
+                resolved_prompt,
                 stage1_results,
                 conversation_history=conversation_history,
                 session_id=conversation_session_id,
@@ -1194,11 +1311,13 @@ async def send_message_stream(
             stage3_started = True
             yield f"data: {json.dumps({'type': 'stage3_start'})}\n\n"
             stage3_result = await stage3_synthesize_final(
-                message_request.content,
+                resolved_prompt,
                 stage1_results,
                 stage2_results,
                 conversation_history=conversation_history,
                 session_id=conversation_session_id,
+                user_attachments=attachment_parts,
+                plugins=PDF_TEXT_PLUGIN if needs_pdf_parser else None,
             )
 
             if await http_request.is_disconnected():

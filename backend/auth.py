@@ -1,11 +1,16 @@
 """Supabase authentication helpers."""
 
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 import httpx
 from fastapi import HTTPException
 
 from .config import SUPABASE_SECRET_KEY, SUPABASE_URL
+
+
+ROLE_USER = "user"
+ROLE_ADMIN = "admin"
+VALID_USER_ROLES = {ROLE_USER, ROLE_ADMIN}
 
 
 def _ensure_supabase_config() -> tuple[str, str]:
@@ -48,6 +53,16 @@ def _admin_headers(api_key: str) -> Dict[str, str]:
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
+
+
+def normalize_user_role(value: Any) -> str:
+    """Normalize role text to the accepted role set."""
+    if not isinstance(value, str):
+        return ROLE_USER
+    normalized = value.strip().lower()
+    if normalized in VALID_USER_ROLES:
+        return normalized
+    return ROLE_USER
 
 
 async def register_user(email: str, password: str) -> Dict[str, Any]:
@@ -145,6 +160,102 @@ async def get_user_by_id_admin(user_id: str) -> Dict[str, Any]:
     raise HTTPException(status_code=502, detail="Invalid user payload from Supabase.")
 
 
+async def _update_user_app_metadata(user_id: str, app_metadata: Dict[str, Any]) -> Dict[str, Any]:
+    """Persist full app_metadata payload for a Supabase auth user."""
+    supabase_url, api_key = _ensure_supabase_config()
+    url = f"{supabase_url}/auth/v1/admin/users/{user_id}"
+
+    async with httpx.AsyncClient(timeout=20) as client:
+        response = await client.put(
+            url,
+            headers=_admin_headers(api_key),
+            json={"app_metadata": app_metadata},
+        )
+
+    data = response.json()
+    if response.status_code >= 400:
+        raise HTTPException(
+            status_code=response.status_code,
+            detail=_extract_error_message(data, "Failed to update user metadata."),
+        )
+
+    if isinstance(data, dict) and isinstance(data.get("user"), dict):
+        return data["user"]
+    if isinstance(data, dict):
+        return data
+    raise HTTPException(status_code=502, detail="Invalid user payload from Supabase.")
+
+
+async def ensure_default_user_role_metadata(user_id: str) -> Dict[str, Any]:
+    """Ensure a newly-created account has the default 'user' app role."""
+    existing_user = await get_user_by_id_admin(user_id)
+    existing_app_metadata = existing_user.get("app_metadata") or {}
+    if not isinstance(existing_app_metadata, dict):
+        existing_app_metadata = {}
+
+    raw_role = existing_app_metadata.get("role")
+    if isinstance(raw_role, str) and raw_role.strip().lower() in VALID_USER_ROLES:
+        return existing_user
+
+    merged_app_metadata = {
+        **existing_app_metadata,
+        "role": ROLE_USER,
+    }
+    return await _update_user_app_metadata(user_id, merged_app_metadata)
+
+
+async def list_users_admin(per_page: int = 200) -> List[Dict[str, Any]]:
+    """List all auth users via Supabase admin API, paginating as needed."""
+    supabase_url, api_key = _ensure_supabase_config()
+    url = f"{supabase_url}/auth/v1/admin/users"
+
+    safe_per_page = max(1, min(int(per_page), 1000))
+    page = 1
+    users: List[Dict[str, Any]] = []
+
+    async with httpx.AsyncClient(timeout=20) as client:
+        while True:
+            response = await client.get(
+                url,
+                headers=_admin_headers(api_key),
+                params={"page": page, "per_page": safe_per_page},
+            )
+
+            data = response.json()
+            if response.status_code >= 400:
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=_extract_error_message(data, "Failed to list users."),
+                )
+
+            batch = data.get("users")
+            if not isinstance(batch, list):
+                raise HTTPException(
+                    status_code=502,
+                    detail="Invalid users payload from Supabase.",
+                )
+
+            users.extend(user for user in batch if isinstance(user, dict))
+
+            next_page = data.get("next_page")
+            if next_page is None or next_page == "":
+                if len(batch) < safe_per_page:
+                    break
+                page += 1
+                continue
+
+            try:
+                next_page_int = int(next_page)
+            except (TypeError, ValueError):
+                break
+
+            if next_page_int <= page:
+                break
+            page = next_page_int
+
+    return users
+
+
 async def update_user_plan_metadata(
     user_id: str,
     plan: str,
@@ -178,25 +289,4 @@ async def update_user_plan_metadata(
         "billing": billing_metadata,
     }
 
-    supabase_url, api_key = _ensure_supabase_config()
-    url = f"{supabase_url}/auth/v1/admin/users/{user_id}"
-
-    async with httpx.AsyncClient(timeout=20) as client:
-        response = await client.put(
-            url,
-            headers=_admin_headers(api_key),
-            json={"app_metadata": merged_app_metadata},
-        )
-
-    data = response.json()
-    if response.status_code >= 400:
-        raise HTTPException(
-            status_code=response.status_code,
-            detail=_extract_error_message(data, "Failed to update user plan."),
-        )
-
-    if isinstance(data, dict) and isinstance(data.get("user"), dict):
-        return data["user"]
-    if isinstance(data, dict):
-        return data
-    raise HTTPException(status_code=502, detail="Invalid user payload from Supabase.")
+    return await _update_user_app_metadata(user_id, merged_app_metadata)

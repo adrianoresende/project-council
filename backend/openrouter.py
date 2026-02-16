@@ -56,10 +56,11 @@ def _normalize_usage(raw_usage: Any) -> Dict[str, Any]:
 
 async def query_model(
     model: str,
-    messages: List[Dict[str, str]],
+    messages: List[Dict[str, Any]],
     timeout: float = 120.0,
     session_id: str | None = None,
     metadata: Dict[str, str] | None = None,
+    plugins: List[Dict[str, Any]] | None = None,
 ) -> Optional[Dict[str, Any]]:
     """
     Query a single model via OpenRouter API.
@@ -99,6 +100,9 @@ async def query_model(
         if metadata_payload:
             payload["metadata"] = metadata_payload
 
+    if isinstance(plugins, list) and plugins:
+        payload["plugins"] = plugins
+
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(
@@ -125,9 +129,10 @@ async def query_model(
 
 async def query_models_parallel(
     models: List[str],
-    messages: List[Dict[str, str]],
+    messages: List[Dict[str, Any]],
     session_id: str | None = None,
     metadata: Dict[str, str] | None = None,
+    plugins: List[Dict[str, Any]] | None = None,
 ) -> Dict[str, Optional[Dict[str, Any]]]:
     """
     Query multiple models in parallel.
@@ -146,6 +151,7 @@ async def query_models_parallel(
             messages,
             session_id=session_id,
             metadata=metadata,
+            plugins=plugins,
         )
         for model in models
     ]

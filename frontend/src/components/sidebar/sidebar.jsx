@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { IconLogout2, IconMessagePlus, IconUserCircle } from "@tabler/icons-react";
+import {
+  IconLogout2,
+  IconMessagePlus,
+  IconShieldLock,
+  IconUserCircle,
+} from "@tabler/icons-react";
 import Tooltip from "../tooltip/tooltip";
 import { useI18n } from "../../i18n";
 
@@ -28,6 +33,7 @@ export default function Sidebar({
   accountMessage,
   userEmail,
   userPlan,
+  userRole,
   onLogout,
 }) {
   const { language, t } = useI18n();
@@ -72,8 +78,8 @@ export default function Sidebar({
               onClick={onNewConversation}
               disabled={!canCreateConversation}
             >
-              {t("sidebar.newConversationButton")}
               <IconMessagePlus size={16} stroke={2.2} />
+              {t("sidebar.newConversationButton")}
             </button>
           </span>
         </Tooltip>
@@ -167,6 +173,19 @@ export default function Sidebar({
 
           {isUserMenuOpen && (
             <div className="absolute bottom-full left-0 z-20 mb-2 w-full rounded-md border border-slate-200 bg-white p-1 shadow-[0_8px_20px_rgba(15,23,42,0.1)]">
+              {userRole === "admin" && (
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-100"
+                  onClick={() => {
+                    onChangeMainView("admin");
+                    setIsUserMenuOpen(false);
+                  }}
+                >
+                  <IconShieldLock size={14} stroke={2} />
+                  {t("sidebar.adminTab")}
+                </button>
+              )}
               <button
                 type="button"
                 className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-100"

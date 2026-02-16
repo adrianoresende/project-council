@@ -19,6 +19,7 @@ export const translations = {
       send: "Send",
       stop: "Stop",
       close: "Close",
+      remove: "Remove",
       loading: "Loading...",
     },
     auth: {
@@ -52,6 +53,7 @@ export const translations = {
       queryLeftOne: "query left",
       queryLeftMany: "queries left",
       upgradeButton: "Upgrade",
+      adminTab: "Admin",
     },
     chat: {
       continuePlaceholder:
@@ -67,7 +69,16 @@ export const translations = {
       draftingFinalAnswer: "Drafting final answer...",
       generationStopped: "Generation stopped by user.",
       viewDeliberation: "View deliberation",
+      viewProcessDetails: "View process details",
+      processDetailsTitle: "Process details",
       cancelledSuffix: "(cancelled)",
+      openUploadMenu: "Open file menu",
+      uploadFileAction: "Upload file",
+      uploadFileDescription: "PDF, images, Word, Excel or PowerPoint",
+      contextLabel: "Context",
+      filesMessagePlaceholder: "Add a message about these files...",
+      unsupportedFileTypeError:
+        "Unsupported file selected. Use PDF, images, DOCX, XLSX or PPTX.",
       stage1Processing: "Stage 1 is processing.",
       stage1NotAvailable: "Stage 1 data is not available for this message.",
       stage2Processing: "Stage 2 is processing.",
@@ -142,6 +153,22 @@ export const translations = {
       redirectingButton: "Redirecting...",
       upgradeToPro: "Upgrade to Pro",
     },
+    admin: {
+      title: "Admin",
+      subtitle: "Registered users on the platform.",
+      refresh: "Refresh",
+      refreshing: "Refreshing...",
+      loadingUsers: "Loading users...",
+      noUsers: "No users found.",
+      failedLoadUsers: "Failed to load users.",
+      columns: {
+        email: "Email",
+        plan: "Plan",
+        stripePaymentId: "Payment Stripe ID",
+        registrationDate: "Registration date",
+        lastLoginDate: "Last login date",
+      },
+    },
     stage: {
       stage1Title: "Stage 1: Individual Responses",
       stage2Title: "Stage 2: Peer Rankings",
@@ -177,6 +204,7 @@ export const translations = {
       send: "Enviar",
       stop: "Detener",
       close: "Cerrar",
+      remove: "Eliminar",
       loading: "Cargando...",
     },
     auth: {
@@ -210,6 +238,7 @@ export const translations = {
       queryLeftOne: "consulta restante",
       queryLeftMany: "consultas restantes",
       upgradeButton: "Mejorar",
+      adminTab: "Admin",
     },
     chat: {
       continuePlaceholder:
@@ -226,7 +255,16 @@ export const translations = {
       draftingFinalAnswer: "Redactando respuesta final...",
       generationStopped: "Generación detenida por el usuario.",
       viewDeliberation: "Ver deliberación",
+      viewProcessDetails: "View process details",
+      processDetailsTitle: "Detalles del proceso",
       cancelledSuffix: "(cancelada)",
+      openUploadMenu: "Abrir menú de archivos",
+      uploadFileAction: "Subir archivo",
+      uploadFileDescription: "PDF, imágenes, Word, Excel o PowerPoint",
+      contextLabel: "Contexto",
+      filesMessagePlaceholder: "Añade un mensaje sobre estos archivos...",
+      unsupportedFileTypeError:
+        "Archivo no compatible. Usa PDF, imágenes, DOCX, XLSX o PPTX.",
       stage1Processing: "La Etapa 1 está en proceso.",
       stage1NotAvailable:
         "Los datos de la Etapa 1 no están disponibles para este mensaje.",
@@ -306,6 +344,22 @@ export const translations = {
       redirectingButton: "Redirigiendo...",
       upgradeToPro: "Mejorar a Pro",
     },
+    admin: {
+      title: "Admin",
+      subtitle: "Usuarios registrados en la plataforma.",
+      refresh: "Actualizar",
+      refreshing: "Actualizando...",
+      loadingUsers: "Cargando usuarios...",
+      noUsers: "No se encontraron usuarios.",
+      failedLoadUsers: "No se pudieron cargar los usuarios.",
+      columns: {
+        email: "Correo electrónico",
+        plan: "Plan",
+        stripePaymentId: "ID de pago Stripe",
+        registrationDate: "Fecha de registro",
+        lastLoginDate: "Último acceso",
+      },
+    },
     stage: {
       stage1Title: "Etapa 1: Respuestas individuales",
       stage2Title: "Etapa 2: Clasificaciones entre pares",
@@ -341,6 +395,7 @@ export const translations = {
       send: "Enviar",
       stop: "Parar",
       close: "Fechar",
+      remove: "Remover",
       loading: "Carregando...",
     },
     auth: {
@@ -374,6 +429,7 @@ export const translations = {
       queryLeftOne: "consulta restante",
       queryLeftMany: "consultas restantes",
       upgradeButton: "Fazer upgrade",
+      adminTab: "Admin",
     },
     chat: {
       continuePlaceholder:
@@ -390,7 +446,16 @@ export const translations = {
       draftingFinalAnswer: "Escrevendo resposta final...",
       generationStopped: "Geração interrompida pelo usuário.",
       viewDeliberation: "Ver deliberação",
+      viewProcessDetails: "View process details",
+      processDetailsTitle: "Detalhes do processo",
       cancelledSuffix: "(cancelada)",
+      openUploadMenu: "Abrir menu de arquivos",
+      uploadFileAction: "Enviar arquivo",
+      uploadFileDescription: "PDF, imagens, Word, Excel ou PowerPoint",
+      contextLabel: "Contexto",
+      filesMessagePlaceholder: "Adicione uma mensagem sobre esses arquivos...",
+      unsupportedFileTypeError:
+        "Arquivo não suportado. Use PDF, imagens, DOCX, XLSX ou PPTX.",
       stage1Processing: "O Estágio 1 está em processamento.",
       stage1NotAvailable:
         "Os dados do Estágio 1 não estão disponíveis para esta mensagem.",
@@ -468,6 +533,22 @@ export const translations = {
       currentPlan: "Plano atual",
       redirectingButton: "Redirecionando...",
       upgradeToPro: "Fazer upgrade para Pro",
+    },
+    admin: {
+      title: "Admin",
+      subtitle: "Usuários registrados na plataforma.",
+      refresh: "Atualizar",
+      refreshing: "Atualizando...",
+      loadingUsers: "Carregando usuários...",
+      noUsers: "Nenhum usuário encontrado.",
+      failedLoadUsers: "Falha ao carregar usuários.",
+      columns: {
+        email: "E-mail",
+        plan: "Plano",
+        stripePaymentId: "ID de pagamento Stripe",
+        registrationDate: "Data de registro",
+        lastLoginDate: "Data do último login",
+      },
     },
     stage: {
       stage1Title: "Estágio 1: Respostas individuais",

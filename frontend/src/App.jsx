@@ -7,12 +7,14 @@ import { useI18n } from './i18n';
 function getMainViewFromPath(pathname) {
   if (pathname === '/pricing') return 'pricing';
   if (pathname === '/account') return 'account';
+  if (pathname === '/admin') return 'admin';
   return 'chat';
 }
 
 function getPathFromMainView(view) {
   if (view === 'pricing') return '/pricing';
   if (view === 'account') return '/account';
+  if (view === 'admin') return '/admin';
   return '/';
 }
 
@@ -32,6 +34,18 @@ function inferPlanFromUser(user) {
   );
 }
 
+function normalizeRole(value) {
+  if (typeof value !== 'string') return 'user';
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'admin') return 'admin';
+  return 'user';
+}
+
+function inferRoleFromUser(user) {
+  if (!user) return 'user';
+  return normalizeRole(user?.app_metadata?.role || 'user');
+}
+
 function emptyUsageSummary() {
   return {
     input_tokens: 0,
@@ -42,10 +56,24 @@ function emptyUsageSummary() {
   };
 }
 
+function normalizeUploadedFilesForMessage(files) {
+  if (!Array.isArray(files)) return [];
+
+  return files
+    .filter((file) => file instanceof File)
+    .map((file) => ({
+      name: file.name,
+      kind: file.type.startsWith('image/') ? 'image' : 'file',
+      mime_type: file.type || 'application/octet-stream',
+      size_bytes: Number(file.size || 0),
+    }));
+}
+
 function App() {
   const { t } = useI18n();
   const [user, setUser] = useState(null);
   const [userPlan, setUserPlan] = useState('free');
+  const [userRole, setUserRole] = useState('user');
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [mainView, setMainView] = useState(
     getMainViewFromPath(window.location.pathname)
@@ -62,6 +90,7 @@ function App() {
   const latestConversationRequestRef = useRef(0);
   const streamAbortControllerRef = useRef(null);
   const hasReceivedFirstStreamSignalRef = useRef(false);
+  const autoConversationBootstrapInFlightRef = useRef(false);
   const currentConversationRef = useRef(null);
   const currentConversationIdRef = useRef(null);
   const conversationListCacheRef = useRef({
@@ -84,6 +113,7 @@ function App() {
     setIsLoading(false);
     setCanCancelMessage(false);
     hasReceivedFirstStreamSignalRef.current = false;
+    autoConversationBootstrapInFlightRef.current = false;
     conversationListCacheRef.current = { chats: null, arquived: null };
   }, []);
 
@@ -99,6 +129,7 @@ function App() {
     api.clearAccessToken();
     setUser(null);
     setUserPlan('free');
+    setUserRole('user');
     clearChatState();
     window.history.replaceState({}, '', '/');
     setMainView('chat');
@@ -242,6 +273,7 @@ function App() {
         const currentUser = await api.getCurrentUser();
         setUser(currentUser);
         setUserPlan(inferPlanFromUser(currentUser));
+        setUserRole(inferRoleFromUser(currentUser));
         await Promise.all([loadConversations(), loadCredits(), loadAccountSummary()]);
       } catch {
         handleUnauthorized();
@@ -252,6 +284,14 @@ function App() {
 
     bootstrapSession();
   }, [handleUnauthorized, loadConversations, loadCredits, loadAccountSummary]);
+
+  useEffect(() => {
+    if (!user) return;
+    if (mainView !== 'admin') return;
+    if (userRole === 'admin') return;
+    window.history.replaceState({}, '', '/');
+    setMainView('chat');
+  }, [user, userRole, mainView]);
 
   useEffect(() => {
     if (user && currentConversationId) {
@@ -265,9 +305,60 @@ function App() {
     }
   }, [user, conversationListTab, mainView, loadConversations]);
 
+  useEffect(() => {
+    const ensureChatIsReady = async () => {
+      if (!user || mainView !== 'chat') return;
+      if (conversationListTab !== 'chats') return;
+      if (currentConversationId) return;
+      if (pendingConversationLoads > 0) return;
+      if (conversationListCacheRef.current.chats === null) return;
+
+      if (credits <= 0) return;
+      if (autoConversationBootstrapInFlightRef.current) return;
+
+      autoConversationBootstrapInFlightRef.current = true;
+      try {
+        const newConv = await api.createConversation();
+        setCurrentConversationId(newConv.id);
+        setCurrentConversation(newConv);
+        loadCredits();
+      } catch (error) {
+        if (error.status === 401) {
+          handleUnauthorized();
+          return;
+        }
+        if (error.status === 402) {
+          const dailyLimitMessage =
+            userPlan === 'pro'
+              ? t('app.dailyTokenLimitReached')
+              : t('app.dailyQueryLimitReached');
+          setAccountMessage(error.message || dailyLimitMessage);
+          loadCredits();
+        }
+        console.error('Failed to auto-create conversation:', error);
+      } finally {
+        autoConversationBootstrapInFlightRef.current = false;
+      }
+    };
+
+    ensureChatIsReady();
+  }, [
+    user,
+    mainView,
+    conversationListTab,
+    currentConversationId,
+    pendingConversationLoads,
+    credits,
+    userPlan,
+    handleUnauthorized,
+    loadCredits,
+    t,
+  ]);
+
   const handleAuthenticated = async (authenticatedUser) => {
     setUser(authenticatedUser);
     setUserPlan(inferPlanFromUser(authenticatedUser));
+    setUserRole(inferRoleFromUser(authenticatedUser));
     clearChatState();
     setMainView(getMainViewFromPath(window.location.pathname));
     await Promise.all([loadConversations(), loadCredits(), loadAccountSummary()]);
@@ -321,6 +412,9 @@ function App() {
   };
 
   const handleChangeMainView = (view) => {
+    if (view === 'admin' && userRole !== 'admin') {
+      return;
+    }
     const path = getPathFromMainView(view);
     if (window.location.pathname !== path) {
       window.history.pushState({}, '', path);
@@ -364,9 +458,11 @@ function App() {
 
   const isConversationsLoading = pendingConversationLoads > 0;
 
-  const handleSendMessage = async (content) => {
+  const handleSendMessage = async (content, files = []) => {
     if (!currentConversationId) return;
     const activeConversationId = currentConversationId;
+    const normalizedFiles = Array.isArray(files) ? files : [];
+    const safeFilesForUI = normalizeUploadedFilesForMessage(normalizedFiles);
     const abortController = new AbortController();
     streamAbortControllerRef.current = abortController;
     hasReceivedFirstStreamSignalRef.current = false;
@@ -374,7 +470,7 @@ function App() {
 
     setIsLoading(true);
     try {
-      const userMessage = { role: 'user', content };
+      const userMessage = { role: 'user', content, files: safeFilesForUI };
       setCurrentConversation((prev) => ({
         ...prev,
         messages: [...prev.messages, userMessage],
@@ -398,7 +494,10 @@ function App() {
         messages: [...prev.messages, assistantMessage],
       }));
 
-      await api.sendMessageStream(activeConversationId, content, (eventType, event) => {
+      await api.sendMessageStream(activeConversationId, {
+        content,
+        files: normalizedFiles,
+      }, (eventType, event) => {
         if (!hasReceivedFirstStreamSignalRef.current) {
           hasReceivedFirstStreamSignalRef.current = true;
           setCanCancelMessage(true);
@@ -617,6 +716,7 @@ function App() {
       accountMessage={accountMessage}
       userEmail={user.email}
       userPlan={userPlan}
+      userRole={userRole}
       onLogout={handleLogout}
       conversation={currentConversation}
       onSendMessage={handleSendMessage}
