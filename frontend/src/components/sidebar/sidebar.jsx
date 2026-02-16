@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { IconLogout2, IconMessagePlus, IconUserCircle } from "@tabler/icons-react";
 import Tooltip from "../tooltip/tooltip";
 import { useI18n } from "../../i18n";
 
@@ -67,11 +68,12 @@ export default function Sidebar({
         >
           <span className="block w-full">
             <button
-              className="btn w-full border-sky-500 bg-sky-500 px-2.5 py-2.5 text-sm font-medium text-white hover:border-sky-600 hover:bg-sky-600 disabled:opacity-55"
+              className="btn w-full gap-2 border-sky-500 bg-sky-500 px-2.5 py-2.5 text-sm font-medium text-white hover:border-sky-600 hover:bg-sky-600 disabled:opacity-55"
               onClick={onNewConversation}
               disabled={!canCreateConversation}
             >
               {t("sidebar.newConversationButton")}
+              <IconMessagePlus size={16} stroke={2.2} />
             </button>
           </span>
         </Tooltip>
@@ -167,22 +169,24 @@ export default function Sidebar({
             <div className="absolute bottom-full left-0 z-20 mb-2 w-full rounded-md border border-slate-200 bg-white p-1 shadow-[0_8px_20px_rgba(15,23,42,0.1)]">
               <button
                 type="button"
-                className="w-full rounded-md px-2 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-100"
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-100"
                 onClick={() => {
                   onChangeMainView("account");
                   setIsUserMenuOpen(false);
                 }}
               >
+                <IconUserCircle size={14} stroke={2} />
                 {t("sidebar.accountTab")}
               </button>
               <button
                 type="button"
-                className="w-full rounded-md px-2 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-100"
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-100"
                 onClick={() => {
                   onLogout();
                   setIsUserMenuOpen(false);
                 }}
               >
+                <IconLogout2 size={14} stroke={2} />
                 {t("sidebar.logoutButton")}
               </button>
             </div>
