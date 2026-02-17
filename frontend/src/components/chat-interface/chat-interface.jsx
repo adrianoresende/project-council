@@ -309,7 +309,7 @@ export default function ChatInterface({
   return (
     <div className="flex h-screen flex-1 bg-white">
       <div className="min-w-0 max-w-4xl mx-auto flex flex-1 flex-col px-6">
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto py-6 px-12">
           {conversationMessages.map((msg, index) => {
             const finalResponse = msg.stage3?.response || msg.content || "";
             const userFiles = Array.isArray(msg.files) ? msg.files : [];
@@ -495,7 +495,7 @@ export default function ChatInterface({
             )}
 
             <textarea
-              className="max-h-[200px] w-full resize-y bg-transparent px-1 py-1 leading-relaxed text-slate-800 outline-none transition-colors placeholder:text-slate-400 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-70"
+              className="max-h-[200px] min-h-[80px] w-full resize-y bg-transparent px-1 py-1 leading-relaxed text-slate-800 outline-none transition-colors placeholder:text-slate-400 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-70"
               placeholder={composerPlaceholder}
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -508,7 +508,7 @@ export default function ChatInterface({
               <div ref={fileMenuRef} className="relative">
                 <button
                   type="button"
-                  className="inline-flex p-2 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-600 transition-colors hover:border-slate-400 hover:bg-slate-100 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex p-2 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-600 transition-colors hover:border-slate-400 hover:bg-slate-100 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
                   onClick={() => setIsFileMenuOpen((previous) => !previous)}
                   disabled={composerDisabled}
                   aria-label={t("chat.openUploadMenu")}
@@ -517,10 +517,10 @@ export default function ChatInterface({
                 </button>
 
                 {isFileMenuOpen && !composerDisabled && (
-                  <div className="absolute bottom-14 left-0 z-20 w-[290px] rounded-lg border border-slate-200 bg-white p-2 shadow-lg">
+                  <div className="absolute bottom-10 left-0 z-20 w-[300px] rounded-lg border border-slate-200 bg-white p-2 shadow-lg/10 shadow-slate-400">
                     <button
                       type="button"
-                      className="flex w-full items-start gap-3 rounded-md px-3 py-2 text-left transition-colors hover:bg-slate-50"
+                      className="flex w-full items-start gap-3 rounded-md px-3 py-2 text-left transition-colors hover:bg-slate-50 cursor-pointer"
                       onClick={handleOpenFileDialog}
                     >
                       <span className="mt-0.5 text-slate-500">

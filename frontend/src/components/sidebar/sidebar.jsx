@@ -119,11 +119,6 @@ export default function Sidebar({
                 <div className="text-sm text-slate-800">
                   {conv.title || t("sidebar.newConversationTitle")}
                 </div>
-                {createdAtText && (
-                  <div className="mt-1 text-[11px] text-slate-400">
-                    {createdAtText}
-                  </div>
-                )}
                 <div className="mt-2 hidden">
                   <button
                     type="button"
