@@ -37,12 +37,8 @@ body {
   }
 }
 
-.markdown-content {
-  padding: 12px;
-}
-
 .markdown-content p {
-  margin: 0 0 12px 0;
+  margin: 0 0 8px 0;
 }
 
 .markdown-content p:last-child {

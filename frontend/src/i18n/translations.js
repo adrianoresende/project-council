@@ -172,7 +172,7 @@ export const translations = {
     stage: {
       stage1Title: "Stage 1: Individual Responses",
       stage2Title: "Stage 2: Peer Rankings",
-      stage3Title: "Stage 3: Final Council Answer",
+      stage3Title: "Stage 3: Final answer",
       rawEvaluationsTitle: "Raw Evaluations",
       rawEvaluationsDescription:
         "Each model evaluated all responses (anonymized as Response A, B, C, etc.) and provided rankings. Below, model names are shown in bold for readability, but the original evaluation used anonymous labels.",
@@ -363,7 +363,7 @@ export const translations = {
     stage: {
       stage1Title: "Etapa 1: Respuestas individuales",
       stage2Title: "Etapa 2: Clasificaciones entre pares",
-      stage3Title: "Etapa 3: Respuesta final del consejo",
+      stage3Title: "Etapa 3: Respuesta final",
       rawEvaluationsTitle: "Evaluaciones en bruto",
       rawEvaluationsDescription:
         "Cada modelo evaluó todas las respuestas (anonimizadas como Respuesta A, B, C, etc.) y proporcionó clasificaciones. Abajo, los nombres de modelos se muestran en negrita para facilitar la lectura, pero la evaluación original usó etiquetas anónimas.",
@@ -553,7 +553,7 @@ export const translations = {
     stage: {
       stage1Title: "Estágio 1: Respostas individuais",
       stage2Title: "Estágio 2: Rankings entre pares",
-      stage3Title: "Estágio 3: Resposta final do conselho",
+      stage3Title: "Estágio 3: Resposta final",
       rawEvaluationsTitle: "Avaliações brutas",
       rawEvaluationsDescription:
         "Cada modelo avaliou todas as respostas (anonimizadas como Resposta A, B, C, etc.) e forneceu rankings. Abaixo, os nomes dos modelos aparecem em negrito para facilitar a leitura, mas a avaliação original usou rótulos anônimos.",
