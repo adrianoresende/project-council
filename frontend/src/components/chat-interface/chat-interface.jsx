@@ -330,11 +330,11 @@ export default function ChatInterface({
             return (
               <div key={index} className="mb-8">
                 {msg.role === "user" ? (
-                  <div className="mb-4">
+                  <div className="mb-4 text-right flex flex-col items-end">
                     <div className="mb-2 text-xs font-semibold uppercase tracking-[0.5px] text-slate-500">
                       {t("chat.youLabel")}
                     </div>
-                    <div className="max-w-[80%]">
+                    <div className="bg-slate-100 py-2.5 px-4 rounded-lg max-w-[80%]">
                       {userFiles.length > 0 && (
                         <div className="mb-2 rounded-lg border border-blue-200 bg-white p-2.5">
                           <div className="flex flex-wrap gap-2">
@@ -371,10 +371,8 @@ export default function ChatInterface({
                       )}
 
                       {hasUserText && (
-                        <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 leading-relaxed whitespace-pre-wrap text-slate-800">
-                          <div className="markdown-content">
-                            <ReactMarkdown>{msg.content}</ReactMarkdown>
-                          </div>
+                        <div className="leading-relaxed whitespace-pre-wrap markdown-content">
+                          <ReactMarkdown>{msg.content}</ReactMarkdown>
                         </div>
                       )}
                     </div>
@@ -384,41 +382,13 @@ export default function ChatInterface({
                     <div className="mb-2 text-xs font-semibold uppercase tracking-[0.5px] text-slate-500">
                       {t("chat.councilAnswerLabel")}
                     </div>
-                    {msg.metadata?.usage && (
-                      <div className="mb-3 text-xs text-slate-500">
-                        {t("chat.turnUsage", {
-                          value: formatUsageSummary(
-                            msg.metadata.usage,
-                            t,
-                            language,
-                          ),
-                        })}
-                      </div>
-                    )}
 
                     {finalResponse ? (
-                      <div className="rounded-lg border border-slate-200 bg-white p-5">
-                        <div className="mb-3 flex items-center justify-between gap-3">
-                          <div className="font-mono text-xs font-semibold text-slate-600">
-                            {t("stage.chairmanLabel")}:{" "}
-                            {getShortModelName(msg.stage3?.model, t)}
-                          </div>
-                          {msg.stage3?.usage && (
-                            <div className="whitespace-nowrap rounded-full border border-emerald-200 bg-emerald-100 px-2.5 py-1 text-xs text-emerald-900">
-                              {formatUsageSummary(
-                                msg.stage3.usage,
-                                t,
-                                language,
-                              )}
-                            </div>
-                          )}
-                        </div>
-                        <div className="markdown-content text-[15px] leading-relaxed text-slate-800">
-                          <ReactMarkdown>{finalResponse}</ReactMarkdown>
-                        </div>
+                      <div className="markdown-content text-[15px] leading-relaxed text-slate-800">
+                        <ReactMarkdown>{finalResponse}</ReactMarkdown>
                       </div>
                     ) : isTurnStillProcessing ? (
-                      <div className="my-3 flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm italic text-slate-500">
+                      <div className="my-3 flex items-center gap-3 text-sm italic text-slate-500">
                         <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-200 border-t-sky-500"></div>
                         <span>{t("chat.draftingFinalAnswer")}</span>
                       </div>
@@ -429,10 +399,10 @@ export default function ChatInterface({
                     )}
 
                     {shouldShowDeliberation && (
-                      <div className="mt-4">
+                      <div className="mt-4 text-right">
                         <button
                           type="button"
-                          className="btn rounded-lg border-slate-300 bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 hover:border-slate-400 hover:bg-slate-200"
+                          className="px-4 py-2 text-xs font-semibold text-slate-400 rounded-md hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer"
                           onClick={() => handleOpenProcessDetails(index)}
                         >
                           {t("chat.viewProcessDetails")}

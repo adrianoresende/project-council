@@ -31,6 +31,14 @@ function getStageDetail(message, key, t, language) {
   return null;
 }
 
+function formatUsageTokensOnly(usage, t, language) {
+  if (!usage || typeof usage !== "object") return null;
+  const totalTokens = Number(usage.total_tokens ?? 0);
+  return t("common.usageTokens", {
+    count: totalTokens.toLocaleString(language),
+  });
+}
+
 function StagePlaceholder({ text }) {
   return (
     <div className="rounded-lg border border-dashed border-slate-300 bg-white px-4 py-3 text-sm text-slate-500">
@@ -93,6 +101,13 @@ export default function SidebarRight({ message, language, t, onClose }) {
             total: stages.length.toLocaleString(language),
           })}
         </p>
+        {message.metadata?.usage && (
+          <p className="mt-1 text-sm text-slate-600">
+            {t("chat.turnUsage", {
+              value: formatUsageTokensOnly(message.metadata.usage, t, language),
+            })}
+          </p>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto p-4">

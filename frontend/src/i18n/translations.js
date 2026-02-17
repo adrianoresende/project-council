@@ -101,7 +101,7 @@ export const translations = {
       stage3Loading: "Running Stage 3: Final synthesis...",
       consultingCouncil: "Consulting the council...",
       conversationUsage: "Conversation usage: {{value}}",
-      turnUsage: "Turn usage: {{value}}",
+      turnUsage: "Usage: {{value}}",
     },
     account: {
       title: "Account",
@@ -291,7 +291,7 @@ export const translations = {
       stage3Loading: "Ejecutando Etapa 3: Síntesis final...",
       consultingCouncil: "Consultando al consejo...",
       conversationUsage: "Uso de la conversación: {{value}}",
-      turnUsage: "Uso del turno: {{value}}",
+      turnUsage: "Uso: {{value}}",
     },
     account: {
       title: "Cuenta",
@@ -481,7 +481,7 @@ export const translations = {
       stage3Loading: "Executando Estágio 3: Síntese final...",
       consultingCouncil: "Consultando o conselho...",
       conversationUsage: "Uso da conversa: {{value}}",
-      turnUsage: "Uso do turno: {{value}}",
+      turnUsage: "Uso: {{value}}",
     },
     account: {
       title: "Conta",
