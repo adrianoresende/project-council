@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../../api';
 import { useI18n } from '../../i18n';
 
@@ -17,11 +17,66 @@ function normalizePlan(value) {
   return value.trim().toLowerCase() === 'pro' ? 'pro' : 'free';
 }
 
+function normalizeStripeCustomerId(value) {
+  if (typeof value !== 'string') return '-';
+  const normalized = value.trim();
+  return normalized || '-';
+}
+
+function mergeUserIntoList(users, updatedUser) {
+  if (!Array.isArray(users)) return [];
+  if (!updatedUser || typeof updatedUser !== 'object') return users;
+
+  const userId = typeof updatedUser.user_id === 'string' ? updatedUser.user_id.trim() : '';
+  if (!userId) return users;
+
+  let matched = false;
+  const nextUsers = users.map((entry) => {
+    const entryUserId = typeof entry?.user_id === 'string' ? entry.user_id.trim() : '';
+    if (entryUserId !== userId) return entry;
+    matched = true;
+    return {
+      ...entry,
+      ...updatedUser,
+      user_id: userId,
+    };
+  });
+
+  return matched ? nextUsers : users;
+}
+
+function formatQuotaRenewedNotice(payload, t) {
+  const credits = Number(payload?.credits);
+  const hasCredits = Number.isFinite(credits) && credits >= 0;
+  const unit = typeof payload?.unit === 'string' ? payload.unit.trim() : '';
+
+  if (!hasCredits || !unit) {
+    return t('admin.drawer.quotaRenewed');
+  }
+
+  return t('admin.drawer.quotaRenewedWithAmount', {
+    credits,
+    unit,
+  });
+}
+
 export default function AdminPage() {
   const { language, t } = useI18n();
   const [users, setUsers] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
+  const [selectedUserId, setSelectedUserId] = useState('');
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [isDrawerLoading, setIsDrawerLoading] = useState(false);
+  const [drawerError, setDrawerError] = useState('');
+  const [drawerNotice, setDrawerNotice] = useState('');
+  const [drawerNoticeTone, setDrawerNoticeTone] = useState('success');
+  const [planDraft, setPlanDraft] = useState('free');
+  const [isSavingPlan, setIsSavingPlan] = useState(false);
+  const [isRenewingQuota, setIsRenewingQuota] = useState(false);
+  const drawerRequestIdRef = useRef(0);
+
+  const isDrawerOpen = selectedUserId.length > 0;
 
   const loadUsers = useCallback(async () => {
     setIsLoading(true);
@@ -49,8 +104,136 @@ export default function AdminPage() {
     });
   }, [users, language]);
 
+  const handleCloseDrawer = useCallback(() => {
+    drawerRequestIdRef.current += 1;
+    setSelectedUserId('');
+    setSelectedUser(null);
+    setIsDrawerLoading(false);
+    setDrawerError('');
+    setDrawerNotice('');
+    setDrawerNoticeTone('success');
+    setPlanDraft('free');
+    setIsSavingPlan(false);
+    setIsRenewingQuota(false);
+  }, []);
+
+  const handleOpenUserDrawer = useCallback(
+    async (user) => {
+      const normalizedUserId = typeof user?.user_id === 'string' ? user.user_id.trim() : '';
+      if (!normalizedUserId) return;
+
+      drawerRequestIdRef.current += 1;
+      const requestId = drawerRequestIdRef.current;
+
+      setSelectedUserId(normalizedUserId);
+      setSelectedUser(user || null);
+      setPlanDraft(normalizePlan(user?.plan));
+      setDrawerError('');
+      setDrawerNotice('');
+      setDrawerNoticeTone('success');
+      setIsDrawerLoading(true);
+
+      try {
+        const payload = await api.getAdminUser(normalizedUserId);
+        if (drawerRequestIdRef.current !== requestId) return;
+
+        if (payload && typeof payload === 'object') {
+          setSelectedUser(payload);
+          setPlanDraft(normalizePlan(payload.plan));
+          setUsers((previousUsers) => mergeUserIntoList(previousUsers, payload));
+        }
+      } catch (loadError) {
+        if (drawerRequestIdRef.current !== requestId) return;
+        setDrawerError(loadError.message || t('admin.drawer.failedLoadUser'));
+      } finally {
+        if (drawerRequestIdRef.current === requestId) {
+          setIsDrawerLoading(false);
+        }
+      }
+    },
+    [t]
+  );
+
+  const selectedPlan = normalizePlan(selectedUser?.plan);
+  const hasPlanChanges = planDraft !== selectedPlan;
+
+  const handleSavePlan = useCallback(async () => {
+    if (!selectedUserId || !hasPlanChanges) return;
+
+    const requestId = drawerRequestIdRef.current;
+    setIsSavingPlan(true);
+    setDrawerNotice('');
+
+    try {
+      const updatedUser = await api.updateAdminUserPlan(selectedUserId, planDraft);
+      if (drawerRequestIdRef.current !== requestId) return;
+
+      if (updatedUser && typeof updatedUser === 'object') {
+        setSelectedUser(updatedUser);
+        setPlanDraft(normalizePlan(updatedUser.plan));
+        setUsers((previousUsers) => mergeUserIntoList(previousUsers, updatedUser));
+      }
+
+      setDrawerNoticeTone('success');
+      setDrawerNotice(
+        t('admin.drawer.planSavedSuccess', {
+          plan: normalizePlan(updatedUser?.plan || planDraft).toUpperCase(),
+        })
+      );
+    } catch (saveError) {
+      if (drawerRequestIdRef.current !== requestId) return;
+      setDrawerNoticeTone('error');
+      setDrawerNotice(saveError.message || t('admin.drawer.failedSavePlan'));
+    } finally {
+      if (drawerRequestIdRef.current === requestId) {
+        setIsSavingPlan(false);
+      }
+    }
+  }, [selectedUserId, hasPlanChanges, planDraft, t]);
+
+  const handleRenewQuota = useCallback(async () => {
+    if (!selectedUserId) return;
+
+    const requestId = drawerRequestIdRef.current;
+    setIsRenewingQuota(true);
+    setDrawerNotice('');
+
+    try {
+      const payload = await api.resetAdminUserQuota(selectedUserId);
+      if (drawerRequestIdRef.current !== requestId) return;
+
+      setDrawerNoticeTone('success');
+      setDrawerNotice(formatQuotaRenewedNotice(payload, t));
+
+      if (selectedUser) {
+        const patchedUser = {
+          ...selectedUser,
+          plan: normalizePlan(payload?.plan || selectedUser.plan),
+        };
+        setSelectedUser(patchedUser);
+        setPlanDraft(normalizePlan(patchedUser.plan));
+        setUsers((previousUsers) => mergeUserIntoList(previousUsers, patchedUser));
+      }
+    } catch (renewError) {
+      if (drawerRequestIdRef.current !== requestId) return;
+      setDrawerNoticeTone('error');
+      setDrawerNotice(renewError.message || t('admin.drawer.failedRenewQuota'));
+    } finally {
+      if (drawerRequestIdRef.current === requestId) {
+        setIsRenewingQuota(false);
+      }
+    }
+  }, [selectedUserId, selectedUser, t]);
+
+  const drawerNoticeClass =
+    drawerNoticeTone === 'error'
+      ? 'border-rose-200 bg-rose-50 text-rose-700'
+      : 'border-emerald-200 bg-emerald-50 text-emerald-700';
+
+  const renewButtonLabel = selectedPlan === 'pro' ? t('admin.drawer.renewTokens') : t('admin.drawer.renewQuota');
+
   return (
-    <div className="h-screen flex-1 overflow-y-auto bg-slate-50">
+    <div className="relative h-screen flex-1 overflow-y-auto bg-slate-50">
       <div className="mx-auto max-w-[1100px] px-6 pb-12 pt-10">
         <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -64,6 +247,16 @@ export default function AdminPage() {
             disabled={isLoading}
           >
             {isLoading ? t('admin.refreshing') : t('admin.refresh')}
+          </button>
+        </div>
+
+        <div className="mb-4 border-b border-slate-200">
+          <button
+            type="button"
+            className="-mb-px border-b-2 border-sky-500 px-1 pb-3 pt-1 text-sm font-semibold text-sky-700"
+            aria-current="page"
+          >
+            {t('admin.tabs.users')}
           </button>
         </div>
 
@@ -99,17 +292,33 @@ export default function AdminPage() {
                 </tr>
               ) : (
                 sortedUsers.map((user, index) => {
+                  const userId = typeof user?.user_id === 'string' ? user.user_id.trim() : '';
                   const email = String(user?.email || '').trim() || '-';
                   const plan = normalizePlan(user?.plan);
-                  const stripeCustomerId =
-                    typeof user?.stripe_customer_id === 'string' && user.stripe_customer_id.trim()
-                      ? user.stripe_customer_id.trim()
-                      : typeof user?.stripe_payment_id === 'string' && user.stripe_payment_id.trim()
-                        ? user.stripe_payment_id.trim()
-                      : '-';
+                  const stripeCustomerId = normalizeStripeCustomerId(user?.stripe_customer_id);
+                  const isSelected = Boolean(userId) && selectedUserId === userId;
 
                   return (
-                    <tr key={`${user?.user_id || email}-${user?.registration_date || 'none'}-${index}`}>
+                    <tr
+                      key={`${userId || email}-${user?.registration_date || 'none'}-${index}`}
+                      className={`transition-colors ${
+                        userId ? 'cursor-pointer hover:bg-slate-50 focus-within:bg-sky-50' : ''
+                      } ${isSelected ? 'bg-sky-50' : ''}`}
+                      role={userId ? 'button' : undefined}
+                      tabIndex={userId ? 0 : undefined}
+                      aria-label={userId ? t('admin.openUserDrawer', { email }) : undefined}
+                      onClick={userId ? () => handleOpenUserDrawer(user) : undefined}
+                      onKeyDown={
+                        userId
+                          ? (event) => {
+                              if (event.key === 'Enter' || event.key === ' ') {
+                                event.preventDefault();
+                                handleOpenUserDrawer(user);
+                              }
+                            }
+                          : undefined
+                      }
+                    >
                       <td className="px-4 py-3 align-top font-medium text-slate-900">{email}</td>
                       <td className="px-4 py-3 align-top">
                         <span
@@ -136,6 +345,145 @@ export default function AdminPage() {
             </tbody>
           </table>
         </div>
+      </div>
+
+      <div
+        className={`fixed inset-0 z-40 transition-opacity duration-200 ${
+          isDrawerOpen ? 'pointer-events-auto' : 'pointer-events-none'
+        }`}
+      >
+        <button
+          type="button"
+          className={`absolute inset-0 bg-slate-900/25 transition-opacity duration-200 ${
+            isDrawerOpen ? 'opacity-100' : 'opacity-0'
+          }`}
+          onClick={handleCloseDrawer}
+          aria-label={t('common.close')}
+          tabIndex={isDrawerOpen ? 0 : -1}
+        />
+
+        <aside
+          className={`absolute left-0 top-0 flex h-full w-full max-w-md flex-col border-r border-slate-200 bg-white shadow-2xl transition-transform duration-200 ${
+            isDrawerOpen ? 'translate-x-0' : '-translate-x-full'
+          }`}
+          aria-hidden={!isDrawerOpen}
+        >
+          <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900">{t('admin.drawer.title')}</h2>
+              {selectedUser?.email && (
+                <p className="mt-1 text-sm text-slate-600">{selectedUser.email}</p>
+              )}
+            </div>
+            <button
+              type="button"
+              className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-100"
+              onClick={handleCloseDrawer}
+            >
+              {t('common.close')}
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto px-5 py-4">
+            {isDrawerLoading && (
+              <p className="text-sm text-slate-600">{t('admin.drawer.loadingUser')}</p>
+            )}
+
+            {drawerError && (
+              <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                {drawerError}
+              </div>
+            )}
+
+            {drawerNotice && (
+              <div className={`mb-4 rounded-lg border px-3 py-2 text-sm ${drawerNoticeClass}`}>
+                {drawerNotice}
+              </div>
+            )}
+
+            {selectedUser && (
+              <div className="space-y-5">
+                <dl className="space-y-3 text-sm">
+                  <div>
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      {t('admin.columns.email')}
+                    </dt>
+                    <dd className="mt-1 text-slate-900">{selectedUser.email || '-'}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      {t('admin.drawer.role')}
+                    </dt>
+                    <dd className="mt-1 text-slate-900">{String(selectedUser.role || 'user').toUpperCase()}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      {t('admin.columns.stripeCustomerId')}
+                    </dt>
+                    <dd className="mt-1 break-all font-mono text-xs text-slate-900">
+                      {normalizeStripeCustomerId(selectedUser.stripe_customer_id)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      {t('admin.columns.registrationDate')}
+                    </dt>
+                    <dd className="mt-1 text-slate-900">
+                      {formatDateTime(selectedUser.registration_date, language)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      {t('admin.columns.lastLoginDate')}
+                    </dt>
+                    <dd className="mt-1 text-slate-900">
+                      {formatDateTime(selectedUser.last_login_date, language)}
+                    </dd>
+                  </div>
+                </dl>
+
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <h3 className="text-sm font-semibold text-slate-900">{t('admin.drawer.actionsTitle')}</h3>
+
+                  <div className="mt-3">
+                    <label htmlFor="admin-user-plan" className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      {t('admin.columns.plan')}
+                    </label>
+                    <div className="mt-1.5 flex gap-2">
+                      <select
+                        id="admin-user-plan"
+                        className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-sky-500 focus:ring-4 focus:ring-sky-100"
+                        value={planDraft}
+                        onChange={(event) => setPlanDraft(normalizePlan(event.target.value))}
+                        disabled={isSavingPlan || isRenewingQuota}
+                      >
+                        <option value="free">{t('admin.drawer.planFree')}</option>
+                        <option value="pro">{t('admin.drawer.planPro')}</option>
+                      </select>
+                      <button
+                        type="button"
+                        className="rounded-lg border border-sky-600 bg-sky-600 px-3 py-2 text-sm font-semibold text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+                        onClick={handleSavePlan}
+                        disabled={isSavingPlan || isRenewingQuota || !hasPlanChanges}
+                      >
+                        {isSavingPlan ? t('admin.drawer.savingPlan') : t('admin.drawer.savePlan')}
+                      </button>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="mt-4 w-full rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    onClick={handleRenewQuota}
+                    disabled={isRenewingQuota || isSavingPlan}
+                  >
+                    {isRenewingQuota ? t('admin.drawer.renewingQuota') : renewButtonLabel}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </aside>
       </div>
     </div>
   );

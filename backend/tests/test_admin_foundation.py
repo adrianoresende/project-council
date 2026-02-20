@@ -92,6 +92,26 @@ class AdminUsersContractTests(unittest.IsolatedAsyncioTestCase):
             await main.get_admin_user("   ", _={"id": "admin-1"})
         self.assertEqual(raised.exception.status_code, 400)
 
+    async def test_get_admin_user_returns_single_user_contract(self):
+        target_user = _build_supabase_user(
+            user_id="target-user",
+            email="target@example.com",
+            role="admin",
+            plan="pro",
+            stripe_customer_id="cus_target",
+        )
+        get_user_mock = AsyncMock(return_value=target_user)
+
+        with patch("backend.main.get_user_by_id_admin", new=get_user_mock):
+            payload = await main.get_admin_user(" target-user ", _={"id": "admin-1"})
+
+        get_user_mock.assert_awaited_once_with("target-user")
+        self.assertEqual(payload["user_id"], "target-user")
+        self.assertEqual(payload["email"], "target@example.com")
+        self.assertEqual(payload["role"], "admin")
+        self.assertEqual(payload["plan"], "pro")
+        self.assertEqual(payload["stripe_customer_id"], "cus_target")
+
     async def test_update_admin_user_role_normalizes_request(self):
         updated_user = _build_supabase_user(
             user_id="target-user",
@@ -133,6 +153,15 @@ class AdminUsersContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(row["plan"], "pro")
         self.assertEqual(row["stripe_customer_id"], "cus_next")
 
+    async def test_update_admin_user_plan_rejects_blank_user_id(self):
+        with self.assertRaises(HTTPException) as raised:
+            await main.update_admin_user_plan(
+                "  ",
+                main.AdminUserPlanUpdateRequest(plan="pro"),
+                _={"id": "admin-1"},
+            )
+        self.assertEqual(raised.exception.status_code, 400)
+
     async def test_reset_admin_user_quota_uses_plan_specific_limits(self):
         scenarios = [
             ("free", main.FREE_DAILY_QUERY_LIMIT, "queries"),
@@ -166,6 +195,25 @@ class AdminUsersContractTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(payload["limit"], expected_limit)
                 self.assertEqual(payload["unit"], expected_unit)
                 self.assertEqual(payload["credits"], expected_limit)
+
+    async def test_reset_admin_user_quota_returns_storage_result_credits(self):
+        target_user = _build_supabase_user(
+            user_id="target-user",
+            email="target@example.com",
+            role="user",
+            plan="pro",
+        )
+        get_user_mock = AsyncMock(return_value=target_user)
+        reset_quota_mock = AsyncMock(return_value=199999)
+
+        with (
+            patch("backend.main.get_user_by_id_admin", new=get_user_mock),
+            patch("backend.main.storage.reset_account_daily_credits", new=reset_quota_mock),
+        ):
+            payload = await main.reset_admin_user_quota("target-user", _={"id": "admin-1"})
+
+        reset_quota_mock.assert_awaited_once_with("target-user", main.PRO_DAILY_TOKEN_CREDITS)
+        self.assertEqual(payload["credits"], 199999)
 
 
 if __name__ == "__main__":
