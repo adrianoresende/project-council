@@ -723,6 +723,15 @@ async def get_account_daily_credits(
     return max(0, _to_int(row.get("credits")))
 
 
+async def reset_account_daily_credits(user_id: str, daily_quota: int) -> int:
+    """Reset a user's daily credits balance to the provided quota."""
+    safe_quota = max(0, int(daily_quota))
+    now_utc = _now_utc()
+    await _ensure_credit_account(user_id, safe_quota)
+    await _set_credit_row(user_id, safe_quota, now_utc)
+    return safe_quota
+
+
 async def consume_account_tokens(
     user_id: str,
     tokens: int,

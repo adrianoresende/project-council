@@ -164,7 +164,7 @@ export const translations = {
       columns: {
         email: "Email",
         plan: "Plan",
-        stripePaymentId: "Payment Stripe ID",
+        stripeCustomerId: "Stripe Customer ID",
         registrationDate: "Registration date",
         lastLoginDate: "Last login date",
       },
@@ -355,7 +355,7 @@ export const translations = {
       columns: {
         email: "Correo electrónico",
         plan: "Plan",
-        stripePaymentId: "ID de pago Stripe",
+        stripeCustomerId: "ID de cliente Stripe",
         registrationDate: "Fecha de registro",
         lastLoginDate: "Último acceso",
       },
@@ -545,7 +545,7 @@ export const translations = {
       columns: {
         email: "E-mail",
         plan: "Plano",
-        stripePaymentId: "ID de pagamento Stripe",
+        stripeCustomerId: "ID do cliente Stripe",
         registrationDate: "Data de registro",
         lastLoginDate: "Data do último login",
       },

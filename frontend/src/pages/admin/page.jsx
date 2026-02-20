@@ -79,7 +79,7 @@ export default function AdminPage() {
               <tr>
                 <th className="px-4 py-3 font-semibold">{t('admin.columns.email')}</th>
                 <th className="px-4 py-3 font-semibold">{t('admin.columns.plan')}</th>
-                <th className="px-4 py-3 font-semibold">{t('admin.columns.stripePaymentId')}</th>
+                <th className="px-4 py-3 font-semibold">{t('admin.columns.stripeCustomerId')}</th>
                 <th className="px-4 py-3 font-semibold">{t('admin.columns.registrationDate')}</th>
                 <th className="px-4 py-3 font-semibold">{t('admin.columns.lastLoginDate')}</th>
               </tr>
@@ -101,13 +101,15 @@ export default function AdminPage() {
                 sortedUsers.map((user, index) => {
                   const email = String(user?.email || '').trim() || '-';
                   const plan = normalizePlan(user?.plan);
-                  const stripePaymentId =
-                    typeof user?.stripe_payment_id === 'string' && user.stripe_payment_id.trim()
-                      ? user.stripe_payment_id.trim()
+                  const stripeCustomerId =
+                    typeof user?.stripe_customer_id === 'string' && user.stripe_customer_id.trim()
+                      ? user.stripe_customer_id.trim()
+                      : typeof user?.stripe_payment_id === 'string' && user.stripe_payment_id.trim()
+                        ? user.stripe_payment_id.trim()
                       : '-';
 
                   return (
-                    <tr key={`${email}-${user?.registration_date || 'none'}-${index}`}>
+                    <tr key={`${user?.user_id || email}-${user?.registration_date || 'none'}-${index}`}>
                       <td className="px-4 py-3 align-top font-medium text-slate-900">{email}</td>
                       <td className="px-4 py-3 align-top">
                         <span
@@ -120,7 +122,7 @@ export default function AdminPage() {
                           {plan.toUpperCase()}
                         </span>
                       </td>
-                      <td className="px-4 py-3 align-top font-mono text-xs text-slate-700">{stripePaymentId}</td>
+                      <td className="px-4 py-3 align-top font-mono text-xs text-slate-700">{stripeCustomerId}</td>
                       <td className="px-4 py-3 align-top text-slate-600">
                         {formatDateTime(user?.registration_date, language)}
                       </td>

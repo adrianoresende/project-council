@@ -46,6 +46,13 @@ function inferRoleFromUser(user) {
   return normalizeRole(user?.app_metadata?.role || 'user');
 }
 
+function resolveMainViewAccess(view, role) {
+  if (view === 'admin' && normalizeRole(role) !== 'admin') {
+    return 'chat';
+  }
+  return view;
+}
+
 function emptyUsageSummary() {
   return {
     input_tokens: 0,
@@ -137,12 +144,19 @@ function App() {
 
   useEffect(() => {
     const onPopState = () => {
-      setMainView(getMainViewFromPath(window.location.pathname));
+      const requestedView = getMainViewFromPath(window.location.pathname);
+      const allowedView = user
+        ? resolveMainViewAccess(requestedView, userRole)
+        : requestedView;
+      if (allowedView !== requestedView) {
+        window.history.replaceState({}, '', getPathFromMainView(allowedView));
+      }
+      setMainView(allowedView);
     };
 
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
-  }, []);
+  }, [user, userRole]);
 
   const loadConversations = useCallback(async ({
     force = false,
@@ -287,10 +301,10 @@ function App() {
 
   useEffect(() => {
     if (!user) return;
-    if (mainView !== 'admin') return;
-    if (userRole === 'admin') return;
-    window.history.replaceState({}, '', '/');
-    setMainView('chat');
+    const allowedView = resolveMainViewAccess(mainView, userRole);
+    if (allowedView === mainView) return;
+    window.history.replaceState({}, '', getPathFromMainView(allowedView));
+    setMainView(allowedView);
   }, [user, userRole, mainView]);
 
   useEffect(() => {
@@ -356,11 +370,18 @@ function App() {
   ]);
 
   const handleAuthenticated = async (authenticatedUser) => {
+    const normalizedRole = inferRoleFromUser(authenticatedUser);
+    const requestedView = getMainViewFromPath(window.location.pathname);
+    const allowedView = resolveMainViewAccess(requestedView, normalizedRole);
+
     setUser(authenticatedUser);
     setUserPlan(inferPlanFromUser(authenticatedUser));
-    setUserRole(inferRoleFromUser(authenticatedUser));
+    setUserRole(normalizedRole);
     clearChatState();
-    setMainView(getMainViewFromPath(window.location.pathname));
+    if (allowedView !== requestedView) {
+      window.history.replaceState({}, '', getPathFromMainView(allowedView));
+    }
+    setMainView(allowedView);
     await Promise.all([loadConversations(), loadCredits(), loadAccountSummary()]);
   };
 
@@ -412,14 +433,15 @@ function App() {
   };
 
   const handleChangeMainView = (view) => {
-    if (view === 'admin' && userRole !== 'admin') {
+    const allowedView = resolveMainViewAccess(view, userRole);
+    if (allowedView !== view) {
       return;
     }
-    const path = getPathFromMainView(view);
+    const path = getPathFromMainView(allowedView);
     if (window.location.pathname !== path) {
       window.history.pushState({}, '', path);
     }
-    setMainView(view);
+    setMainView(allowedView);
   };
 
   const handleChangeConversationTab = (tab) => {

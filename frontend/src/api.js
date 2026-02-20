@@ -164,6 +164,30 @@ export const api = {
     return request('/api/admin/users');
   },
 
+  async getAdminUser(userId) {
+    return request(`/api/admin/users/${encodeURIComponent(userId)}`);
+  },
+
+  async updateAdminUserRole(userId, role) {
+    return request(`/api/admin/users/${encodeURIComponent(userId)}/role`, {
+      method: 'PATCH',
+      body: JSON.stringify({ role }),
+    });
+  },
+
+  async updateAdminUserPlan(userId, plan) {
+    return request(`/api/admin/users/${encodeURIComponent(userId)}/plan`, {
+      method: 'PATCH',
+      body: JSON.stringify({ plan }),
+    });
+  },
+
+  async resetAdminUserQuota(userId) {
+    return request(`/api/admin/users/${encodeURIComponent(userId)}/quota/reset`, {
+      method: 'POST',
+    });
+  },
+
   async getAccountPayments(limit = 20) {
     return request(`/api/account/payments?limit=${encodeURIComponent(limit)}`);
   },

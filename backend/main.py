@@ -22,12 +22,14 @@ from . import storage
 from .auth import (
     ROLE_ADMIN,
     ensure_default_user_role_metadata,
+    get_user_by_id_admin,
     get_user_from_token,
     list_users_admin,
     login_user,
     normalize_user_role,
     register_user,
     update_user_plan_metadata,
+    update_user_role_metadata,
 )
 from .council import (
     generate_conversation_title,
@@ -129,11 +131,32 @@ class AccountSummaryResponse(BaseModel):
 
 class AdminUserResponse(BaseModel):
     """Admin-facing user row payload."""
+    user_id: str
     email: str
+    role: str
     plan: str
-    stripe_payment_id: str | None = None
+    stripe_customer_id: str | None = None
     registration_date: str | None = None
     last_login_date: str | None = None
+
+
+class AdminUserRoleUpdateRequest(BaseModel):
+    """Request payload for updating a user's app role."""
+    role: str
+
+
+class AdminUserPlanUpdateRequest(BaseModel):
+    """Request payload for updating a user's plan metadata."""
+    plan: str
+
+
+class AdminUserQuotaResetResponse(BaseModel):
+    """Admin response payload when resetting a user's daily quota."""
+    user_id: str
+    plan: str
+    unit: str
+    limit: int
+    credits: int
 
 
 class BillingPaymentResponse(BaseModel):
@@ -226,8 +249,8 @@ def _get_user_role(user: Dict[str, Any]) -> str:
     return normalize_user_role(app_metadata.get("role"))
 
 
-def _get_user_stripe_payment_id(user: Dict[str, Any]) -> str | None:
-    """Resolve Stripe identifier from billing metadata."""
+def _get_user_stripe_customer_id(user: Dict[str, Any]) -> str | None:
+    """Resolve Stripe Customer ID from billing metadata."""
     app_metadata = user.get("app_metadata") or {}
     if not isinstance(app_metadata, dict):
         app_metadata = {}
@@ -236,11 +259,54 @@ def _get_user_stripe_payment_id(user: Dict[str, Any]) -> str | None:
     if not isinstance(billing_metadata, dict):
         billing_metadata = {}
 
-    for key in ("stripe_customer_id", "stripe_subscription_id"):
-        value = billing_metadata.get(key)
-        if isinstance(value, str) and value.strip():
-            return value.strip()
+    value = billing_metadata.get("stripe_customer_id")
+    if isinstance(value, str) and value.strip():
+        return value.strip()
     return None
+
+
+def _normalize_admin_target_user_id(user_id: str) -> str:
+    """Normalize and validate an admin target user id path parameter."""
+    normalized = user_id.strip()
+    if not normalized:
+        raise HTTPException(status_code=400, detail="User id is required.")
+    return normalized
+
+
+def _build_admin_user_row(user: Dict[str, Any]) -> Dict[str, Any]:
+    """Build the stable admin users API row contract from a Supabase user."""
+    user_id = user.get("id")
+    if not isinstance(user_id, str) or not user_id.strip():
+        raise HTTPException(status_code=502, detail="Invalid user payload from Supabase.")
+
+    email = user.get("email")
+    if not isinstance(email, str):
+        email = ""
+
+    return {
+        "user_id": user_id.strip(),
+        "email": email.strip(),
+        "role": _get_user_role(user),
+        "plan": _get_user_plan(user),
+        "stripe_customer_id": _get_user_stripe_customer_id(user),
+        "registration_date": (
+            user["created_at"].strip()
+            if isinstance(user.get("created_at"), str)
+            else None
+        ),
+        "last_login_date": (
+            user["last_sign_in_at"].strip()
+            if isinstance(user.get("last_sign_in_at"), str)
+            else None
+        ),
+    }
+
+
+def _plan_quota_descriptor(plan: str) -> tuple[int, str]:
+    """Return daily quota limit and unit for a normalized plan."""
+    if _normalize_plan(plan) == "pro":
+        return PRO_DAILY_TOKEN_CREDITS, "tokens"
+    return FREE_DAILY_QUERY_LIMIT, "queries"
 
 
 def _normalize_iana_timezone(value: Any) -> str | None:
@@ -349,12 +415,13 @@ async def _get_remaining_plan_quota(
 ) -> tuple[int, str, int, str]:
     """Return remaining quota and descriptor for current user plan."""
     plan = _get_user_plan(user)
+    quota_limit, quota_unit = _plan_quota_descriptor(plan)
     if plan == "pro":
         remaining = await _get_remaining_daily_tokens(user)
-        return remaining, "tokens", PRO_DAILY_TOKEN_CREDITS, "pro"
+        return remaining, quota_unit, quota_limit, "pro"
 
     remaining = await _get_remaining_daily_queries(user, user_timezone)
-    return remaining, "queries", FREE_DAILY_QUERY_LIMIT, "free"
+    return remaining, quota_unit, quota_limit, "free"
 
 
 def _compress_message_content(text: str, max_chars: int) -> str:
@@ -882,30 +949,67 @@ async def get_admin_users(_: Dict[str, Any] = Depends(get_current_admin_user)):
     users = await list_users_admin()
     rows = []
     for user in users:
-        email = user.get("email")
-        if not isinstance(email, str):
-            email = ""
-
-        rows.append(
-            {
-                "email": email.strip(),
-                "plan": _get_user_plan(user),
-                "stripe_payment_id": _get_user_stripe_payment_id(user),
-                "registration_date": (
-                    user["created_at"].strip()
-                    if isinstance(user.get("created_at"), str)
-                    else None
-                ),
-                "last_login_date": (
-                    user["last_sign_in_at"].strip()
-                    if isinstance(user.get("last_sign_in_at"), str)
-                    else None
-                ),
-            }
-        )
+        rows.append(_build_admin_user_row(user))
 
     rows.sort(key=lambda row: (row["email"].lower(), row["email"]))
     return rows
+
+
+@app.get("/api/admin/users/{user_id}", response_model=AdminUserResponse)
+async def get_admin_user(
+    user_id: str,
+    _: Dict[str, Any] = Depends(get_current_admin_user),
+):
+    """Return a single admin user row contract by user id."""
+    normalized_user_id = _normalize_admin_target_user_id(user_id)
+    user = await get_user_by_id_admin(normalized_user_id)
+    return _build_admin_user_row(user)
+
+
+@app.patch("/api/admin/users/{user_id}/role", response_model=AdminUserResponse)
+async def update_admin_user_role(
+    user_id: str,
+    request: AdminUserRoleUpdateRequest,
+    _: Dict[str, Any] = Depends(get_current_admin_user),
+):
+    """Update a user's app role (`user` or `admin`) through admin API."""
+    normalized_user_id = _normalize_admin_target_user_id(user_id)
+    normalized_role = normalize_user_role(request.role)
+    updated_user = await update_user_role_metadata(normalized_user_id, normalized_role)
+    return _build_admin_user_row(updated_user)
+
+
+@app.patch("/api/admin/users/{user_id}/plan", response_model=AdminUserResponse)
+async def update_admin_user_plan(
+    user_id: str,
+    request: AdminUserPlanUpdateRequest,
+    _: Dict[str, Any] = Depends(get_current_admin_user),
+):
+    """Update a user's plan metadata (`free` or `pro`) through admin API."""
+    normalized_user_id = _normalize_admin_target_user_id(user_id)
+    normalized_plan = _normalize_plan(request.plan)
+    updated_user = await update_user_plan_metadata(normalized_user_id, normalized_plan)
+    return _build_admin_user_row(updated_user)
+
+
+@app.post("/api/admin/users/{user_id}/quota/reset", response_model=AdminUserQuotaResetResponse)
+async def reset_admin_user_quota(
+    user_id: str,
+    _: Dict[str, Any] = Depends(get_current_admin_user),
+):
+    """Reset a user's daily quota to plan baseline for admin drawer actions."""
+    normalized_user_id = _normalize_admin_target_user_id(user_id)
+    target_user = await get_user_by_id_admin(normalized_user_id)
+    plan = _get_user_plan(target_user)
+    quota_limit, quota_unit = _plan_quota_descriptor(plan)
+    credits = await storage.reset_account_daily_credits(normalized_user_id, quota_limit)
+    return {
+        "user_id": normalized_user_id,
+        "plan": plan,
+        "unit": quota_unit,
+        "limit": quota_limit,
+        "credits": credits,
+    }
 
 
 @app.post("/api/account/credits/add", response_model=CreditsResponse)
