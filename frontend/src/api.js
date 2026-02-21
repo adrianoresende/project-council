@@ -12,12 +12,42 @@ function getAuthHeaders() {
   return { Authorization: `Bearer ${accessToken}` };
 }
 
+function getUserTimezoneHeader() {
+  try {
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (typeof timezone === 'string' && timezone.trim()) {
+      return { 'X-User-Timezone': timezone.trim() };
+    }
+  } catch {
+    // Ignore timezone detection errors and fallback to server default.
+  }
+  return {};
+}
+
 async function parseError(response, fallbackMessage) {
   try {
     const payload = await response.json();
-    return payload.detail || payload.message || fallbackMessage;
+    const detail = payload?.detail;
+    const detailIsObject = detail && typeof detail === 'object' && !Array.isArray(detail);
+    if (detailIsObject) {
+      const structuredMessage = typeof detail.message === 'string' ? detail.message.trim() : '';
+      const payloadMessage = typeof payload?.message === 'string' ? payload.message.trim() : '';
+      return {
+        message: structuredMessage || payloadMessage || fallbackMessage,
+        payload: detail,
+      };
+    }
+    const detailMessage = typeof detail === 'string' ? detail.trim() : '';
+    const payloadMessage = typeof payload?.message === 'string' ? payload.message.trim() : '';
+    return {
+      message: detailMessage || payloadMessage || fallbackMessage,
+      payload: payload && typeof payload === 'object' ? payload : null,
+    };
   } catch {
-    return fallbackMessage;
+    return {
+      message: fallbackMessage,
+      payload: null,
+    };
   }
 }
 
@@ -25,7 +55,7 @@ async function request(path, options = {}, requiresAuth = true) {
   const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
   const headers = {
     ...(!isFormData && options.body ? { 'Content-Type': 'application/json' } : {}),
-    ...(requiresAuth ? getAuthHeaders() : {}),
+    ...(requiresAuth ? { ...getAuthHeaders(), ...getUserTimezoneHeader() } : {}),
     ...(options.headers || {}),
   };
 
@@ -35,9 +65,16 @@ async function request(path, options = {}, requiresAuth = true) {
   });
 
   if (!response.ok) {
-    const message = await parseError(response, 'Request failed');
+    const { message, payload } = await parseError(response, 'Request failed');
     const error = new Error(message);
     error.status = response.status;
+    if (payload && typeof payload === 'object') {
+      error.payload = payload;
+      if (typeof payload.code === 'string') error.code = payload.code;
+      if (typeof payload.action === 'string') error.action = payload.action;
+      if (typeof payload.reset_at === 'string') error.resetAt = payload.reset_at;
+      if (typeof payload.timezone === 'string') error.timezone = payload.timezone;
+    }
     throw error;
   }
 
@@ -125,6 +162,30 @@ export const api = {
 
   async getAdminUsers() {
     return request('/api/admin/users');
+  },
+
+  async getAdminUser(userId) {
+    return request(`/api/admin/users/${encodeURIComponent(userId)}`);
+  },
+
+  async updateAdminUserRole(userId, role) {
+    return request(`/api/admin/users/${encodeURIComponent(userId)}/role`, {
+      method: 'PATCH',
+      body: JSON.stringify({ role }),
+    });
+  },
+
+  async updateAdminUserPlan(userId, plan) {
+    return request(`/api/admin/users/${encodeURIComponent(userId)}/plan`, {
+      method: 'PATCH',
+      body: JSON.stringify({ plan }),
+    });
+  },
+
+  async resetAdminUserQuota(userId) {
+    return request(`/api/admin/users/${encodeURIComponent(userId)}/quota/reset`, {
+      method: 'POST',
+    });
   },
 
   async getAccountPayments(limit = 20) {
@@ -235,6 +296,7 @@ export const api = {
         method: 'POST',
         headers: {
           ...getAuthHeaders(),
+          ...getUserTimezoneHeader(),
         },
         body: buildMessageFormData(normalizedPayload),
         signal,
@@ -242,9 +304,16 @@ export const api = {
     );
 
     if (!response.ok) {
-      const message = await parseError(response, 'Failed to send message');
+      const { message, payload } = await parseError(response, 'Failed to send message');
       const error = new Error(message);
       error.status = response.status;
+      if (payload && typeof payload === 'object') {
+        error.payload = payload;
+        if (typeof payload.code === 'string') error.code = payload.code;
+        if (typeof payload.action === 'string') error.action = payload.action;
+        if (typeof payload.reset_at === 'string') error.resetAt = payload.reset_at;
+        if (typeof payload.timezone === 'string') error.timezone = payload.timezone;
+      }
       throw error;
     }
 

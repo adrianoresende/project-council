@@ -2,6 +2,7 @@
 
 from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import json
 
 import httpx
@@ -53,6 +54,24 @@ def _parse_iso_datetime(value: Any) -> datetime | None:
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
     return parsed.astimezone(timezone.utc)
+
+
+def _now_utc() -> datetime:
+    """Return current UTC time (wrapper to simplify deterministic tests)."""
+    return datetime.now(timezone.utc)
+
+
+def _resolve_daily_reset_timezone(timezone_name: str | None):
+    """Resolve an IANA timezone for quota reset boundaries, defaulting to UTC."""
+    if not isinstance(timezone_name, str):
+        return timezone.utc
+    normalized = timezone_name.strip()
+    if not normalized:
+        return timezone.utc
+    try:
+        return ZoneInfo(normalized)
+    except ZoneInfoNotFoundError:
+        return timezone.utc
 
 
 def _normalize_session_id(value: Any) -> str | None:
@@ -674,10 +693,16 @@ async def _set_credit_row(user_id: str, credits: int, updated_at: datetime):
     )
 
 
-async def get_account_daily_credits(user_id: str, daily_quota: int) -> int:
-    """Return daily remaining credits, resetting once per UTC day."""
+async def get_account_daily_credits(
+    user_id: str,
+    daily_quota: int,
+    timezone_name: str | None = None,
+) -> int:
+    """Return daily remaining credits, resetting once per local day boundary."""
     safe_quota = max(0, int(daily_quota))
-    now = datetime.now(timezone.utc)
+    now_utc = _now_utc()
+    reset_timezone = _resolve_daily_reset_timezone(timezone_name)
+    local_today = now_utc.astimezone(reset_timezone).date()
 
     await _ensure_credit_account(user_id, safe_quota)
     row = await _get_credit_row(user_id)
@@ -685,18 +710,41 @@ async def get_account_daily_credits(user_id: str, daily_quota: int) -> int:
         return safe_quota
 
     updated_at = _parse_iso_datetime(row.get("updated_at"))
-    should_reset = updated_at is None or updated_at.date() != now.date()
+    updated_local_date = (
+        updated_at.astimezone(reset_timezone).date()
+        if updated_at is not None
+        else None
+    )
+    should_reset = updated_local_date is None or updated_local_date != local_today
     if should_reset:
-        await _set_credit_row(user_id, safe_quota, now)
+        await _set_credit_row(user_id, safe_quota, now_utc)
         return safe_quota
 
     return max(0, _to_int(row.get("credits")))
 
 
-async def consume_account_tokens(user_id: str, tokens: int, daily_quota: int) -> int:
+async def reset_account_daily_credits(user_id: str, daily_quota: int) -> int:
+    """Reset a user's daily credits balance to the provided quota."""
+    safe_quota = max(0, int(daily_quota))
+    now_utc = _now_utc()
+    await _ensure_credit_account(user_id, safe_quota)
+    await _set_credit_row(user_id, safe_quota, now_utc)
+    return safe_quota
+
+
+async def consume_account_tokens(
+    user_id: str,
+    tokens: int,
+    daily_quota: int,
+    timezone_name: str | None = None,
+) -> int:
     """Consume tokens from daily credits and return remaining balance."""
     consume = max(0, int(tokens))
-    remaining = await get_account_daily_credits(user_id, daily_quota)
+    remaining = await get_account_daily_credits(
+        user_id,
+        daily_quota,
+        timezone_name=timezone_name,
+    )
     if remaining <= 0:
         raise ValueError(
             "Daily credit has run out. You must wait until tomorrow for renewal."
@@ -706,7 +754,7 @@ async def consume_account_tokens(user_id: str, tokens: int, daily_quota: int) ->
         return remaining
 
     next_remaining = max(0, remaining - consume)
-    await _set_credit_row(user_id, next_remaining, datetime.now(timezone.utc))
+    await _set_credit_row(user_id, next_remaining, _now_utc())
     return next_remaining
 
 

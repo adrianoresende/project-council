@@ -6,7 +6,7 @@ from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from contextlib import suppress
 import uuid
 import json
@@ -15,18 +15,21 @@ import hashlib
 import hmac
 import time
 from urllib.parse import urlparse
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import httpx
 
 from . import storage
 from .auth import (
     ROLE_ADMIN,
     ensure_default_user_role_metadata,
+    get_user_by_id_admin,
     get_user_from_token,
     list_users_admin,
     login_user,
     normalize_user_role,
     register_user,
     update_user_plan_metadata,
+    update_user_role_metadata,
 )
 from .council import (
     generate_conversation_title,
@@ -56,6 +59,8 @@ from .files import (
 
 app = FastAPI(title="LLM Council API")
 bearer_scheme = HTTPBearer()
+FREE_PLAN_LIMIT_ERROR_CODE = "FREE_DAILY_QUERY_LIMIT_REACHED"
+DEFAULT_DAILY_RESET_TIMEZONE = "UTC"
 
 # Enable CORS for local development
 app.add_middleware(
@@ -126,11 +131,32 @@ class AccountSummaryResponse(BaseModel):
 
 class AdminUserResponse(BaseModel):
     """Admin-facing user row payload."""
+    user_id: str
     email: str
+    role: str
     plan: str
-    stripe_payment_id: str | None = None
+    stripe_customer_id: str | None = None
     registration_date: str | None = None
     last_login_date: str | None = None
+
+
+class AdminUserRoleUpdateRequest(BaseModel):
+    """Request payload for updating a user's app role."""
+    role: str
+
+
+class AdminUserPlanUpdateRequest(BaseModel):
+    """Request payload for updating a user's plan metadata."""
+    plan: str
+
+
+class AdminUserQuotaResetResponse(BaseModel):
+    """Admin response payload when resetting a user's daily quota."""
+    user_id: str
+    plan: str
+    unit: str
+    limit: int
+    credits: int
 
 
 class BillingPaymentResponse(BaseModel):
@@ -223,8 +249,8 @@ def _get_user_role(user: Dict[str, Any]) -> str:
     return normalize_user_role(app_metadata.get("role"))
 
 
-def _get_user_stripe_payment_id(user: Dict[str, Any]) -> str | None:
-    """Resolve Stripe identifier from billing metadata."""
+def _get_user_stripe_customer_id(user: Dict[str, Any]) -> str | None:
+    """Resolve Stripe Customer ID from billing metadata."""
     app_metadata = user.get("app_metadata") or {}
     if not isinstance(app_metadata, dict):
         app_metadata = {}
@@ -233,11 +259,133 @@ def _get_user_stripe_payment_id(user: Dict[str, Any]) -> str | None:
     if not isinstance(billing_metadata, dict):
         billing_metadata = {}
 
-    for key in ("stripe_customer_id", "stripe_subscription_id"):
-        value = billing_metadata.get(key)
-        if isinstance(value, str) and value.strip():
-            return value.strip()
+    value = billing_metadata.get("stripe_customer_id")
+    if isinstance(value, str) and value.strip():
+        return value.strip()
     return None
+
+
+def _normalize_admin_target_user_id(user_id: str) -> str:
+    """Normalize and validate an admin target user id path parameter."""
+    normalized = user_id.strip()
+    if not normalized:
+        raise HTTPException(status_code=400, detail="User id is required.")
+    return normalized
+
+
+def _build_admin_user_row(user: Dict[str, Any]) -> Dict[str, Any]:
+    """Build the stable admin users API row contract from a Supabase user."""
+    user_id = user.get("id")
+    if not isinstance(user_id, str) or not user_id.strip():
+        raise HTTPException(status_code=502, detail="Invalid user payload from Supabase.")
+
+    email = user.get("email")
+    if not isinstance(email, str):
+        email = ""
+
+    return {
+        "user_id": user_id.strip(),
+        "email": email.strip(),
+        "role": _get_user_role(user),
+        "plan": _get_user_plan(user),
+        "stripe_customer_id": _get_user_stripe_customer_id(user),
+        "registration_date": (
+            user["created_at"].strip()
+            if isinstance(user.get("created_at"), str)
+            else None
+        ),
+        "last_login_date": (
+            user["last_sign_in_at"].strip()
+            if isinstance(user.get("last_sign_in_at"), str)
+            else None
+        ),
+    }
+
+
+def _plan_quota_descriptor(plan: str) -> tuple[int, str]:
+    """Return daily quota limit and unit for a normalized plan."""
+    if _normalize_plan(plan) == "pro":
+        return PRO_DAILY_TOKEN_CREDITS, "tokens"
+    return FREE_DAILY_QUERY_LIMIT, "queries"
+
+
+def _normalize_iana_timezone(value: Any) -> str | None:
+    """Normalize an IANA timezone string, returning None when invalid."""
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    if not normalized:
+        return None
+    try:
+        zone = ZoneInfo(normalized)
+    except ZoneInfoNotFoundError:
+        return None
+    return getattr(zone, "key", normalized)
+
+
+def _resolve_user_timezone(user: Dict[str, Any], requested_timezone: str | None = None) -> str:
+    """
+    Resolve timezone used for free-plan daily resets.
+
+    Strategy:
+    1) IANA timezone sent by frontend in X-User-Timezone header.
+    2) User metadata/app metadata timezone fields if present.
+    3) UTC fallback.
+    """
+    user_metadata = user.get("user_metadata") or {}
+    if not isinstance(user_metadata, dict):
+        user_metadata = {}
+    app_metadata = user.get("app_metadata") or {}
+    if not isinstance(app_metadata, dict):
+        app_metadata = {}
+
+    candidates = [
+        requested_timezone,
+        user_metadata.get("timezone"),
+        user_metadata.get("time_zone"),
+        user_metadata.get("tz"),
+        app_metadata.get("timezone"),
+        app_metadata.get("time_zone"),
+        app_metadata.get("tz"),
+    ]
+    for candidate in candidates:
+        resolved = _normalize_iana_timezone(candidate)
+        if resolved is not None:
+            return resolved
+    return DEFAULT_DAILY_RESET_TIMEZONE
+
+
+def _next_local_midnight_reset_at(timezone_name: str) -> str:
+    """Return the next local midnight for a timezone as an ISO UTC timestamp."""
+    resolved_timezone = _normalize_iana_timezone(timezone_name) or DEFAULT_DAILY_RESET_TIMEZONE
+    local_timezone = ZoneInfo(resolved_timezone)
+    now_utc = datetime.now(timezone.utc)
+    now_local = now_utc.astimezone(local_timezone)
+    next_midnight_local = datetime.combine(
+        now_local.date() + timedelta(days=1),
+        datetime.min.time(),
+        tzinfo=local_timezone,
+    )
+    return next_midnight_local.astimezone(timezone.utc).isoformat()
+
+
+def _raise_free_daily_query_limit_error(timezone_name: str) -> None:
+    """Raise a stable actionable 402 payload for free-plan daily query limit."""
+    resolved_timezone = _normalize_iana_timezone(timezone_name) or DEFAULT_DAILY_RESET_TIMEZONE
+    raise HTTPException(
+        status_code=402,
+        detail={
+            "code": FREE_PLAN_LIMIT_ERROR_CODE,
+            "message": "Daily query limit reached. Continue existing conversations or start a new one after local midnight.",
+            "action": "wait_until_reset",
+            "plan": "free",
+            "unit": "queries",
+            "limit": FREE_DAILY_QUERY_LIMIT,
+            "remaining": 0,
+            "timezone": resolved_timezone,
+            "reset_at": _next_local_midnight_reset_at(resolved_timezone),
+        },
+    )
 
 
 async def _get_remaining_daily_tokens(user: Dict[str, Any]) -> int:
@@ -247,22 +395,33 @@ async def _get_remaining_daily_tokens(user: Dict[str, Any]) -> int:
     return await storage.get_account_daily_credits(user["id"], PRO_DAILY_TOKEN_CREDITS)
 
 
-async def _get_remaining_daily_queries(user: Dict[str, Any]) -> int:
+async def _get_remaining_daily_queries(
+    user: Dict[str, Any],
+    user_timezone: str | None = None,
+) -> int:
     """Return remaining daily conversation queries for FREE accounts, or 0 for PRO."""
     if _get_user_plan(user) != "free":
         return 0
-    return await storage.get_account_daily_credits(user["id"], FREE_DAILY_QUERY_LIMIT)
+    return await storage.get_account_daily_credits(
+        user["id"],
+        FREE_DAILY_QUERY_LIMIT,
+        timezone_name=user_timezone,
+    )
 
 
-async def _get_remaining_plan_quota(user: Dict[str, Any]) -> tuple[int, str, int, str]:
+async def _get_remaining_plan_quota(
+    user: Dict[str, Any],
+    user_timezone: str | None = None,
+) -> tuple[int, str, int, str]:
     """Return remaining quota and descriptor for current user plan."""
     plan = _get_user_plan(user)
+    quota_limit, quota_unit = _plan_quota_descriptor(plan)
     if plan == "pro":
         remaining = await _get_remaining_daily_tokens(user)
-        return remaining, "tokens", PRO_DAILY_TOKEN_CREDITS, "pro"
+        return remaining, quota_unit, quota_limit, "pro"
 
-    remaining = await _get_remaining_daily_queries(user)
-    return remaining, "queries", FREE_DAILY_QUERY_LIMIT, "free"
+    remaining = await _get_remaining_daily_queries(user, user_timezone)
+    return remaining, quota_unit, quota_limit, "free"
 
 
 def _compress_message_content(text: str, max_chars: int) -> str:
@@ -748,9 +907,16 @@ async def stripe_webhook(
 
 
 @app.get("/api/account/credits", response_model=CreditsResponse)
-async def get_credits(user: Dict[str, Any] = Depends(get_current_user)):
+async def get_credits(
+    user_timezone: str | None = Header(default=None, alias="X-User-Timezone"),
+    user: Dict[str, Any] = Depends(get_current_user),
+):
     """Get remaining daily quota for the logged in account."""
-    credits, unit, limit, plan = await _get_remaining_plan_quota(user)
+    resolved_timezone = _resolve_user_timezone(user, user_timezone)
+    credits, unit, limit, plan = await _get_remaining_plan_quota(
+        user,
+        resolved_timezone,
+    )
     return {
         "credits": credits,
         "unit": unit,
@@ -783,30 +949,67 @@ async def get_admin_users(_: Dict[str, Any] = Depends(get_current_admin_user)):
     users = await list_users_admin()
     rows = []
     for user in users:
-        email = user.get("email")
-        if not isinstance(email, str):
-            email = ""
-
-        rows.append(
-            {
-                "email": email.strip(),
-                "plan": _get_user_plan(user),
-                "stripe_payment_id": _get_user_stripe_payment_id(user),
-                "registration_date": (
-                    user["created_at"].strip()
-                    if isinstance(user.get("created_at"), str)
-                    else None
-                ),
-                "last_login_date": (
-                    user["last_sign_in_at"].strip()
-                    if isinstance(user.get("last_sign_in_at"), str)
-                    else None
-                ),
-            }
-        )
+        rows.append(_build_admin_user_row(user))
 
     rows.sort(key=lambda row: (row["email"].lower(), row["email"]))
     return rows
+
+
+@app.get("/api/admin/users/{user_id}", response_model=AdminUserResponse)
+async def get_admin_user(
+    user_id: str,
+    _: Dict[str, Any] = Depends(get_current_admin_user),
+):
+    """Return a single admin user row contract by user id."""
+    normalized_user_id = _normalize_admin_target_user_id(user_id)
+    user = await get_user_by_id_admin(normalized_user_id)
+    return _build_admin_user_row(user)
+
+
+@app.patch("/api/admin/users/{user_id}/role", response_model=AdminUserResponse)
+async def update_admin_user_role(
+    user_id: str,
+    request: AdminUserRoleUpdateRequest,
+    _: Dict[str, Any] = Depends(get_current_admin_user),
+):
+    """Update a user's app role (`user` or `admin`) through admin API."""
+    normalized_user_id = _normalize_admin_target_user_id(user_id)
+    normalized_role = normalize_user_role(request.role)
+    updated_user = await update_user_role_metadata(normalized_user_id, normalized_role)
+    return _build_admin_user_row(updated_user)
+
+
+@app.patch("/api/admin/users/{user_id}/plan", response_model=AdminUserResponse)
+async def update_admin_user_plan(
+    user_id: str,
+    request: AdminUserPlanUpdateRequest,
+    _: Dict[str, Any] = Depends(get_current_admin_user),
+):
+    """Update a user's plan metadata (`free` or `pro`) through admin API."""
+    normalized_user_id = _normalize_admin_target_user_id(user_id)
+    normalized_plan = _normalize_plan(request.plan)
+    updated_user = await update_user_plan_metadata(normalized_user_id, normalized_plan)
+    return _build_admin_user_row(updated_user)
+
+
+@app.post("/api/admin/users/{user_id}/quota/reset", response_model=AdminUserQuotaResetResponse)
+async def reset_admin_user_quota(
+    user_id: str,
+    _: Dict[str, Any] = Depends(get_current_admin_user),
+):
+    """Reset a user's daily quota to plan baseline for admin drawer actions."""
+    normalized_user_id = _normalize_admin_target_user_id(user_id)
+    target_user = await get_user_by_id_admin(normalized_user_id)
+    plan = _get_user_plan(target_user)
+    quota_limit, quota_unit = _plan_quota_descriptor(plan)
+    credits = await storage.reset_account_daily_credits(normalized_user_id, quota_limit)
+    return {
+        "user_id": normalized_user_id,
+        "plan": plan,
+        "unit": quota_unit,
+        "limit": quota_limit,
+        "credits": credits,
+    }
 
 
 @app.post("/api/account/credits/add", response_model=CreditsResponse)
@@ -833,19 +1036,18 @@ async def list_conversations(
 @app.post("/api/conversations", response_model=Conversation)
 async def create_conversation(
     request: CreateConversationRequest,
+    user_timezone: str | None = Header(default=None, alias="X-User-Timezone"),
     user: Dict[str, Any] = Depends(get_current_user),
 ):
     """Create a new conversation."""
     plan = _get_user_plan(user)
+    resolved_timezone = _resolve_user_timezone(user, user_timezone)
     if plan == "free":
         # Free users spend one query when they send the first message in a conversation.
         # We still block opening drafts when daily query quota is exhausted.
-        remaining_queries = await _get_remaining_daily_queries(user)
+        remaining_queries = await _get_remaining_daily_queries(user, resolved_timezone)
         if remaining_queries <= 0:
-            raise HTTPException(
-                status_code=402,
-                detail="Daily query limit has run out. You must wait until tomorrow for renewal.",
-            )
+            _raise_free_daily_query_limit_error(resolved_timezone)
     else:
         remaining_tokens = await _get_remaining_daily_tokens(user)
         if remaining_tokens <= 0:
@@ -892,6 +1094,7 @@ async def archive_conversation(
 async def send_message(
     conversation_id: str,
     http_request: Request,
+    user_timezone: str | None = Header(default=None, alias="X-User-Timezone"),
     user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
@@ -910,6 +1113,7 @@ async def send_message(
     conversation_history = _build_conversation_history(conversation.get("messages", []))
     conversation_session_id = _resolve_conversation_session_id(conversation)
     plan = _get_user_plan(user)
+    resolved_timezone = _resolve_user_timezone(user, user_timezone)
     remaining_balance_after = 0
 
     if plan == "pro":
@@ -920,31 +1124,30 @@ async def send_message(
                 detail="Daily token credit has run out. You must wait until tomorrow for renewal.",
             )
     elif is_first_message:
-        remaining_queries = await _get_remaining_daily_queries(user)
+        remaining_queries = await _get_remaining_daily_queries(user, resolved_timezone)
         if remaining_queries <= 0:
-            raise HTTPException(
-                status_code=402,
-                detail="Daily query limit has run out. You must wait until tomorrow for renewal.",
-            )
+            _raise_free_daily_query_limit_error(resolved_timezone)
+        # Keep current balance unless first successful Stage 1 response triggers consumption.
         remaining_balance_after = remaining_queries
 
     attachment_parts, safe_user_files, needs_pdf_parser = await prepare_uploaded_files_for_model(
         incoming_files
     )
     resolved_prompt = resolve_message_prompt(message_content, safe_user_files)
+    defer_first_message_persistence = plan == "free" and is_first_message
 
-    # Add user message
-    await storage.add_user_message(
-        conversation_id,
-        user["id"],
-        message_content,
-        files=safe_user_files,
-        id_session=conversation_session_id,
-    )
+    if not defer_first_message_persistence:
+        await storage.add_user_message(
+            conversation_id,
+            user["id"],
+            message_content,
+            files=safe_user_files,
+            id_session=conversation_session_id,
+        )
 
     # If this is the first message, generate a title
     title_usage = empty_usage_summary()
-    if is_first_message:
+    if is_first_message and not defer_first_message_persistence:
         title_result = await generate_conversation_title(
             resolved_prompt,
             session_id=conversation_session_id,
@@ -961,6 +1164,36 @@ async def send_message(
         user_attachments=attachment_parts,
         plugins=PDF_TEXT_PLUGIN if needs_pdf_parser else None,
     )
+
+    # Free plan: consume one query only after Stage 1 has at least one successful response.
+    if defer_first_message_persistence and stage1_results:
+        try:
+            remaining_balance_after = await storage.consume_account_tokens(
+                user["id"],
+                1,
+                FREE_DAILY_QUERY_LIMIT,
+                timezone_name=resolved_timezone,
+            )
+        except ValueError:
+            _raise_free_daily_query_limit_error(resolved_timezone)
+
+    if defer_first_message_persistence:
+        await storage.add_user_message(
+            conversation_id,
+            user["id"],
+            message_content,
+            files=safe_user_files,
+            id_session=conversation_session_id,
+        )
+
+        title_result = await generate_conversation_title(
+            resolved_prompt,
+            session_id=conversation_session_id,
+        )
+        title = title_result.get("title", "New Conversation")
+        title_usage = title_result.get("usage", empty_usage_summary())
+        await storage.update_conversation_title(conversation_id, user["id"], title)
+
     stage2_results: List[Dict[str, Any]] = []
     if not stage1_results:
         stage3_result = {
@@ -974,17 +1207,6 @@ async def send_message(
             "usage": summarize_council_usage(stage1_results, stage2_results, stage3_result),
         }
     else:
-        # Free plan: count one query after Stage 1 is complete and before Stage 2 starts.
-        if plan == "free" and is_first_message:
-            try:
-                remaining_balance_after = await storage.consume_account_tokens(
-                    user["id"],
-                    1,
-                    FREE_DAILY_QUERY_LIMIT,
-                )
-            except ValueError as error:
-                raise HTTPException(status_code=402, detail=str(error)) from error
-
         # Stage 2
         stage2_results, label_to_model = await stage2_collect_rankings(
             resolved_prompt,
@@ -1036,7 +1258,8 @@ async def send_message(
         except ValueError as error:
             raise HTTPException(status_code=402, detail=str(error)) from error
     elif not is_first_message:
-        remaining_balance_after = await _get_remaining_daily_queries(user)
+        # Existing conversation continuation stays allowed and does not consume a new free query.
+        remaining_balance_after = await _get_remaining_daily_queries(user, resolved_timezone)
 
     # Add assistant message with all stages
     await storage.add_assistant_message(
@@ -1064,6 +1287,7 @@ async def send_message(
 async def send_message_stream(
     conversation_id: str,
     http_request: Request,
+    user_timezone: str | None = Header(default=None, alias="X-User-Timezone"),
     user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
@@ -1082,6 +1306,7 @@ async def send_message_stream(
     conversation_history = _build_conversation_history(conversation.get("messages", []))
     conversation_session_id = _resolve_conversation_session_id(conversation)
     plan = _get_user_plan(user)
+    resolved_timezone = _resolve_user_timezone(user, user_timezone)
     remaining_balance_after = 0
 
     if plan == "pro":
@@ -1092,12 +1317,10 @@ async def send_message_stream(
                 detail="Daily token credit has run out. You must wait until tomorrow for renewal.",
             )
     elif is_first_message:
-        remaining_queries = await _get_remaining_daily_queries(user)
+        remaining_queries = await _get_remaining_daily_queries(user, resolved_timezone)
         if remaining_queries <= 0:
-            raise HTTPException(
-                status_code=402,
-                detail="Daily query limit has run out. You must wait until tomorrow for renewal.",
-            )
+            _raise_free_daily_query_limit_error(resolved_timezone)
+        # Keep current balance unless first successful Stage 1 response triggers consumption.
         remaining_balance_after = remaining_queries
 
     attachment_parts, safe_user_files, needs_pdf_parser = await prepare_uploaded_files_for_model(
@@ -1113,7 +1336,6 @@ async def send_message_stream(
         label_to_model: Dict[str, str] = {}
         aggregate_rankings: List[Dict[str, Any]] = []
         title_task: asyncio.Task | None = None
-        free_query_consumed = False
         user_message_saved = False
         stage1_started = False
         stage2_started = False
@@ -1144,7 +1366,7 @@ async def send_message_stream(
             wait_for_title: bool = False,
             save_title: bool = True,
         ) -> tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any] | None]:
-            nonlocal remaining_balance_current, stage3_result, free_query_consumed
+            nonlocal remaining_balance_current, stage3_result
             nonlocal stage1_started, stage2_started, stage3_started
 
             resolved_title = title_result
@@ -1216,17 +1438,16 @@ async def send_message_stream(
                 else:
                     remaining_balance_current = await _get_remaining_daily_tokens(user)
             elif plan == "free":
-                if is_first_message and stage1_results and not free_query_consumed:
-                    remaining_balance_current = await storage.consume_account_tokens(
-                        user["id"],
-                        1,
-                        FREE_DAILY_QUERY_LIMIT,
+                if is_first_message:
+                    # Keep current value: pre-check remaining for no-success Stage 1,
+                    # or consumed balance once Stage 1 produced at least one response.
+                    remaining_balance_current = max(0, int(remaining_balance_current))
+                else:
+                    # Existing conversation continuation stays allowed and does not consume a new free query.
+                    remaining_balance_current = await _get_remaining_daily_queries(
+                        user,
+                        resolved_timezone,
                     )
-                    free_query_consumed = True
-                elif is_first_message and not free_query_consumed:
-                    remaining_balance_current = await _get_remaining_daily_queries(user)
-                elif not is_first_message:
-                    remaining_balance_current = await _get_remaining_daily_queries(user)
 
             if not user_message_saved:
                 updated_conversation = await storage.get_conversation(conversation_id, user["id"]) or {}
@@ -1274,15 +1495,17 @@ async def send_message_stream(
                 plugins=PDF_TEXT_PLUGIN if needs_pdf_parser else None,
             )
 
-            # Free plan: count one query only after Stage 1 is complete,
-            # immediately before Stage 2 begins.
-            if plan == "free" and is_first_message and stage1_results and not free_query_consumed:
-                remaining_balance_current = await storage.consume_account_tokens(
-                    user["id"],
-                    1,
-                    FREE_DAILY_QUERY_LIMIT,
-                )
-                free_query_consumed = True
+            # Free plan: consume one query only after Stage 1 has at least one successful response.
+            if plan == "free" and is_first_message and stage1_results:
+                try:
+                    remaining_balance_current = await storage.consume_account_tokens(
+                        user["id"],
+                        1,
+                        FREE_DAILY_QUERY_LIMIT,
+                        timezone_name=resolved_timezone,
+                    )
+                except ValueError:
+                    _raise_free_daily_query_limit_error(resolved_timezone)
 
             if await http_request.is_disconnected():
                 await persist_turn(cancelled=True, wait_for_title=False)

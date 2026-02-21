@@ -290,3 +290,19 @@ async def update_user_plan_metadata(
     }
 
     return await _update_user_app_metadata(user_id, merged_app_metadata)
+
+
+async def update_user_role_metadata(user_id: str, role: str) -> Dict[str, Any]:
+    """Set app role metadata for a Supabase auth user."""
+    normalized_role = normalize_user_role(role)
+
+    existing_user = await get_user_by_id_admin(user_id)
+    existing_app_metadata = existing_user.get("app_metadata") or {}
+    if not isinstance(existing_app_metadata, dict):
+        existing_app_metadata = {}
+
+    merged_app_metadata = {
+        **existing_app_metadata,
+        "role": normalized_role,
+    }
+    return await _update_user_app_metadata(user_id, merged_app_metadata)
