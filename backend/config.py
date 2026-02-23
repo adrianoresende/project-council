@@ -25,6 +25,46 @@ COUNCIL_ENV = (
     .strip()
     .lower()
 )
+DEVELOPMENT_ENV_NAMES = {"development", "dev", "local"}
+
+
+def _parse_cors_origins(raw_origins: str | None) -> list[str]:
+    """Parse a comma-separated list of CORS origins."""
+    if not raw_origins:
+        return []
+
+    parsed_origins: list[str] = []
+    seen_origins: set[str] = set()
+    for origin in raw_origins.split(","):
+        normalized_origin = origin.strip().rstrip("/")
+        if not normalized_origin:
+            continue
+        if normalized_origin == "*":
+            raise ValueError(
+                "CORS_ALLOW_ORIGINS does not support '*' when credentials are enabled."
+            )
+        if normalized_origin not in seen_origins:
+            parsed_origins.append(normalized_origin)
+            seen_origins.add(normalized_origin)
+    return parsed_origins
+
+
+def resolve_cors_allow_origins(
+    raw_origins: str | None,
+    environment: str,
+) -> list[str]:
+    """
+    Resolve CORS origins using env overrides and environment-aware defaults.
+
+    Development defaults to localhost origins for convenience.
+    Production defaults to no cross-origin access unless explicitly configured.
+    """
+    parsed_origins = _parse_cors_origins(raw_origins)
+    if parsed_origins:
+        return parsed_origins
+    if environment in DEVELOPMENT_ENV_NAMES:
+        return ["http://localhost:5173", "http://localhost:3000"]
+    return []
 
 DEVELOPMENT_COUNCIL_MODELS = [
     "openai/gpt-5-nano",
@@ -40,7 +80,7 @@ PRODUCTION_COUNCIL_MODELS = [
     "x-ai/grok-4",
 ]
 
-if COUNCIL_ENV in {"development", "dev", "local"}:
+if COUNCIL_ENV in DEVELOPMENT_ENV_NAMES:
     COUNCIL_MODELS = DEVELOPMENT_COUNCIL_MODELS
     DEFAULT_CHAIRMAN_MODEL = "openai/gpt-5-nano"
 else:
@@ -49,6 +89,10 @@ else:
 
 # Chairman model - synthesizes final response
 CHAIRMAN_MODEL = os.getenv("CHAIRMAN_MODEL") or DEFAULT_CHAIRMAN_MODEL
+CORS_ALLOW_ORIGINS = resolve_cors_allow_origins(
+    os.getenv("CORS_ALLOW_ORIGINS"),
+    COUNCIL_ENV,
+)
 
 # OpenRouter API endpoint
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"

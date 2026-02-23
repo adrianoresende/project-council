@@ -98,6 +98,20 @@ COUNCIL_MODELS = [
 CHAIRMAN_MODEL = "google/gemini-3-pro-preview"
 ```
 
+### 5. Configure CORS Origins
+
+The backend reads `CORS_ALLOW_ORIGINS` as a comma-separated list:
+
+```bash
+CORS_ALLOW_ORIGINS=https://app.example.com,https://www.example.com
+```
+
+- In `development` / `dev` / `local`, when unset, it defaults to:
+  - `http://localhost:5173`
+  - `http://localhost:3000`
+- In `production`, when unset, no cross-origin browser access is allowed.
+- Do not use `*` because credentialed requests are enabled.
+
 ## Running the Application
 
 **Option 1: Use the start script**

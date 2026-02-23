@@ -14,7 +14,6 @@ import asyncio
 import hashlib
 import hmac
 import time
-import os
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import httpx
@@ -49,6 +48,7 @@ from .config import (
     PRO_DAILY_TOKEN_CREDITS,
     FREE_DAILY_QUERY_LIMIT,
     COUNCIL_ENV,
+    CORS_ALLOW_ORIGINS,
 )
 from .files import (
     PDF_TEXT_PLUGIN,
@@ -62,22 +62,11 @@ app = FastAPI(title="LLM Council API")
 bearer_scheme = HTTPBearer()
 FREE_PLAN_LIMIT_ERROR_CODE = "FREE_DAILY_QUERY_LIMIT_REACHED"
 DEFAULT_DAILY_RESET_TIMEZONE = "UTC"
-DEFAULT_CORS_ORIGINS = ["http://localhost:5173", "http://localhost:3000"]
 
-
-def get_cors_origins() -> list[str]:
-    raw_origins = os.getenv("CORS_ALLOW_ORIGINS", "")
-    parsed_origins = [
-        origin.strip().rstrip("/")
-        for origin in raw_origins.split(",")
-        if origin.strip()
-    ]
-    return parsed_origins or DEFAULT_CORS_ORIGINS
-
-# Enable CORS for local development by default and support production origins via env.
+# Configure CORS from backend config (dev localhost defaults, explicit production origins).
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=get_cors_origins(),
+    allow_origins=CORS_ALLOW_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
