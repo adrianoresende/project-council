@@ -172,9 +172,13 @@ Set `CORS_ALLOW_ORIGINS` to one or more comma-separated frontend origins.
 2. The committed `frontend/railway.toml` defines build and start:
 
 ```bash
-npm ci && npm run build
+NPM_CONFIG_PRODUCTION=false npm install --include=dev --no-audit --no-fund && npm run build
 npm run preview -- --host 0.0.0.0 --port ${PORT:-4173}
 ```
+
+Why `npm install` instead of `npm ci`:
+- Railway can reuse filesystem layers where `node_modules/.vite` is still locked, which can make `npm ci` fail with `EBUSY: rmdir '/app/node_modules/.vite'`.
+- This build command keeps devDependencies available for `vite build` and avoids the `npm ci` cleanup step that triggers this lock error.
 
 3. Set frontend environment variables in Railway:
 
