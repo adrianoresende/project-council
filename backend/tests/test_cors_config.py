@@ -25,7 +25,7 @@ class CorsConfigTests(unittest.TestCase):
 
     def test_parse_cors_origins_strips_wrapping_quotes(self):
         parsed = config._parse_cors_origins(
-            '"https://app.example.com/" , \'http://localhost:5173/\''
+            "\"https://app.example.com/\" , 'http://localhost:5173/'"
         )
         self.assertEqual(
             parsed,

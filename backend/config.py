@@ -88,6 +88,46 @@ COUNCIL_ENV = resolve_council_env(
     os.getenv("APP_ENV"),
     os.getenv("ENVIRONMENT"),
 )
+DEVELOPMENT_ENV_NAMES = {"development", "dev", "local"}
+
+
+def _parse_cors_origins(raw_origins: str | None) -> list[str]:
+    """Parse a comma-separated list of CORS origins."""
+    if not raw_origins:
+        return []
+
+    parsed_origins: list[str] = []
+    seen_origins: set[str] = set()
+    for origin in raw_origins.split(","):
+        normalized_origin = origin.strip().rstrip("/")
+        if not normalized_origin:
+            continue
+        if normalized_origin == "*":
+            raise ValueError(
+                "CORS_ALLOW_ORIGINS does not support '*' when credentials are enabled."
+            )
+        if normalized_origin not in seen_origins:
+            parsed_origins.append(normalized_origin)
+            seen_origins.add(normalized_origin)
+    return parsed_origins
+
+
+def resolve_cors_allow_origins(
+    raw_origins: str | None,
+    environment: str,
+) -> list[str]:
+    """
+    Resolve CORS origins using env overrides and environment-aware defaults.
+
+    Development defaults to localhost origins for convenience.
+    Production defaults to no cross-origin access unless explicitly configured.
+    """
+    parsed_origins = _parse_cors_origins(raw_origins)
+    if parsed_origins:
+        return parsed_origins
+    if environment in DEVELOPMENT_ENV_NAMES:
+        return ["http://localhost:5173", "http://localhost:3000"]
+    return []
 
 DEVELOPMENT_COUNCIL_MODELS = [
     "openai/gpt-5-nano",
