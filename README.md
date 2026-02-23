@@ -120,12 +120,14 @@ npm run dev
 
 Then open http://localhost:5173 in your browser.
 
-## Railway Production Deployment (Backend)
+## Railway Production Deployment (Backend + Frontend)
 
-Deploy only the backend API service to Railway from this repository.
+Deploy this project as two Railway services from the same repository.
 
-1. Create a Railway service from the repo.
-2. Keep the start command aligned with `railway.toml`:
+### 1. Backend API service (repo root)
+
+1. Create a Railway service from this repo using the root directory (`/`).
+2. Keep the start command aligned with root `railway.toml`:
 
 ```bash
 uv run uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-8001}
@@ -138,15 +140,41 @@ OPENROUTER_API_KEY=sk-or-v1-...
 SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
 SUPABASE_API_KEY_SECRET=sb_secret_...
 COUNCIL_ENV=production
+CORS_ALLOW_ORIGINS=https://YOUR_FRONTEND_DOMAIN.up.railway.app
 ```
 
-For first successful boot, `OPENROUTER_API_KEY`, `SUPABASE_URL`, and `SUPABASE_API_KEY_SECRET` must be set. `COUNCIL_ENV=production` keeps model selection explicit in Railway.
+For first successful boot, `OPENROUTER_API_KEY`, `SUPABASE_URL`, and `SUPABASE_API_KEY_SECRET` must be set.
+Set `CORS_ALLOW_ORIGINS` to one or more comma-separated frontend origins.
 
-4. Deploy and verify the service responds on `/` with:
+4. Deploy and verify the backend responds on `/` with:
 
 ```json
 {"status":"ok","service":"LLM Council API"}
 ```
+
+### 2. Frontend web service (`frontend` root directory)
+
+1. Create a second Railway service from the same repo and set **Root Directory** to `frontend`.
+2. The committed `frontend/railway.toml` defines build and start:
+
+```bash
+npm ci && npm run build
+npm run preview -- --host 0.0.0.0 --port ${PORT:-4173}
+```
+
+3. Set frontend environment variables in Railway:
+
+```bash
+VITE_API_BASE_URL=https://YOUR_BACKEND_DOMAIN.up.railway.app
+```
+
+4. Deploy and open the frontend public URL.
+
+### 3. Wiring checklist
+
+- Backend `CORS_ALLOW_ORIGINS` must include the deployed frontend URL.
+- Frontend `VITE_API_BASE_URL` must point to the deployed backend URL.
+- If frontend domain changes, update backend `CORS_ALLOW_ORIGINS` and redeploy backend.
 
 ## Credits
 
