@@ -184,7 +184,11 @@ Why `npm install` instead of `npm ci`:
 
 ```bash
 VITE_API_BASE_URL=https://YOUR_BACKEND_DOMAIN.up.railway.app
+VITE_PREVIEW_ALLOWED_HOSTS=front-end-production-4235.up.railway.app,another-frontend-domain.up.railway.app
 ```
+
+`VITE_PREVIEW_ALLOWED_HOSTS` is a comma-separated host allowlist used by `vite preview`.
+If unset, the frontend falls back to allowing `front-end-production-4235.up.railway.app`.
 
 4. Deploy and open the frontend public URL.
 
