@@ -120,6 +120,34 @@ npm run dev
 
 Then open http://localhost:5173 in your browser.
 
+## Railway Production Deployment (Backend)
+
+Deploy only the backend API service to Railway from this repository.
+
+1. Create a Railway service from the repo.
+2. Keep the start command aligned with `railway.toml`:
+
+```bash
+uv run uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-8001}
+```
+
+3. Set backend environment variables in Railway:
+
+```bash
+OPENROUTER_API_KEY=sk-or-v1-...
+SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
+SUPABASE_API_KEY_SECRET=sb_secret_...
+COUNCIL_ENV=production
+```
+
+For first successful boot, `OPENROUTER_API_KEY`, `SUPABASE_URL`, and `SUPABASE_API_KEY_SECRET` must be set. `COUNCIL_ENV=production` keeps model selection explicit in Railway.
+
+4. Deploy and verify the service responds on `/` with:
+
+```json
+{"status":"ok","service":"LLM Council API"}
+```
+
 ## Credits
 
 - Credits are token-based and available only for **PRO** accounts.
