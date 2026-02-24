@@ -3,6 +3,12 @@ import AccountAccessPage from './pages/account/page';
 import ChatPage from './pages/home/page';
 import { api } from './api';
 import { useI18n } from './i18n';
+import {
+  clearOAuthCallbackArtifactsFromUrl,
+  readOAuthCallbackErrorFromUrl,
+  resolveSupabaseSession,
+  signOutSupabaseSession,
+} from './auth/supabase-auth';
 
 function getMainViewFromPath(pathname) {
   if (pathname === '/pricing') return 'pricing';
@@ -81,6 +87,7 @@ function App() {
   const [user, setUser] = useState(null);
   const [userPlan, setUserPlan] = useState('free');
   const [userRole, setUserRole] = useState('user');
+  const [authEntryError, setAuthEntryError] = useState('');
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [mainView, setMainView] = useState(
     getMainViewFromPath(window.location.pathname)
@@ -134,9 +141,11 @@ function App() {
 
   const handleUnauthorized = useCallback(() => {
     api.clearAccessToken();
+    void signOutSupabaseSession().catch(() => {});
     setUser(null);
     setUserPlan('free');
     setUserRole('user');
+    setAuthEntryError('');
     clearChatState();
     window.history.replaceState({}, '', '/');
     setMainView('chat');
@@ -277,7 +286,25 @@ function App() {
 
   useEffect(() => {
     const bootstrapSession = async () => {
-      const token = api.getAccessToken();
+      let token = api.getAccessToken();
+      const callbackError = readOAuthCallbackErrorFromUrl();
+      if (callbackError) {
+        setAuthEntryError(callbackError);
+      }
+
+      if (!token) {
+        const { session, error } = await resolveSupabaseSession();
+        if (error) {
+          setAuthEntryError(error.message || 'Google sign-in failed. Please try again.');
+        } else if (session?.access_token) {
+          api.setAccessToken(session.access_token);
+          token = session.access_token;
+          setAuthEntryError('');
+        }
+      }
+
+      clearOAuthCallbackArtifactsFromUrl();
+
       if (!token) {
         setIsAuthLoading(false);
         return;
@@ -288,6 +315,7 @@ function App() {
         setUser(currentUser);
         setUserPlan(inferPlanFromUser(currentUser));
         setUserRole(inferRoleFromUser(currentUser));
+        setAuthEntryError('');
         await Promise.all([loadConversations(), loadCredits(), loadAccountSummary()]);
       } catch {
         handleUnauthorized();
@@ -377,6 +405,7 @@ function App() {
     setUser(authenticatedUser);
     setUserPlan(inferPlanFromUser(authenticatedUser));
     setUserRole(normalizedRole);
+    setAuthEntryError('');
     clearChatState();
     if (allowedView !== requestedView) {
       window.history.replaceState({}, '', getPathFromMainView(allowedView));
@@ -717,7 +746,12 @@ function App() {
   }
 
   if (!user) {
-    return <AccountAccessPage onAuthenticated={handleAuthenticated} />;
+    return (
+      <AccountAccessPage
+        onAuthenticated={handleAuthenticated}
+        oauthErrorMessage={authEntryError}
+      />
+    );
   }
 
   return (
