@@ -295,7 +295,7 @@ function App() {
       if (!token) {
         const { session, error } = await resolveSupabaseSession();
         if (error) {
-          setAuthEntryError(error.message || 'Google sign-in failed. Please try again.');
+          setAuthEntryError(error.message || t('auth.googleAuthenticationFailed'));
         } else if (session?.access_token) {
           api.setAccessToken(session.access_token);
           token = session.access_token;

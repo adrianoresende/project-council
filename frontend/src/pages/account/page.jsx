@@ -38,6 +38,8 @@ export default function AccountAccessPage({ onAuthenticated, oauthErrorMessage =
   const [notice, setNotice] = useState('');
 
   const isLogin = mode === 'login';
+  const ssoSectionLabel = t('auth.ssoSectionLabel');
+  const manualSectionLabel = t('auth.manualSectionLabel');
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -80,7 +82,15 @@ export default function AccountAccessPage({ onAuthenticated, oauthErrorMessage =
     try {
       await startGoogleOAuthSignIn();
     } catch (oauthError) {
-      setGoogleError(oauthError.message || 'Google sign-in failed.');
+      const oauthMessage = oauthError?.message || '';
+      if (
+        oauthMessage.includes('VITE_SUPABASE_URL')
+        || oauthMessage.includes('VITE_SUPABASE_ANON_KEY')
+      ) {
+        setGoogleError(t('auth.googleAuthenticationUnavailable'));
+      } else {
+        setGoogleError(oauthMessage || t('auth.googleAuthenticationFailed'));
+      }
       setIsGoogleSubmitting(false);
     }
   };
@@ -94,10 +104,7 @@ export default function AccountAccessPage({ onAuthenticated, oauthErrorMessage =
         </p>
 
         <section className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-          <h2 className="text-sm font-semibold text-slate-900">
-            {isLogin ? 'Sign in with SSO' : 'Sign up with SSO'}
-          </h2>
-          <p className="mt-1 text-xs text-slate-600">Use Google for instant access.</p>
+          <h2 className="text-sm font-semibold text-slate-900">{ssoSectionLabel}</h2>
           {(oauthErrorMessage || googleError) && (
             <div className="mt-2 text-[13px] text-rose-700">{googleError || oauthErrorMessage}</div>
           )}
@@ -108,22 +115,20 @@ export default function AccountAccessPage({ onAuthenticated, oauthErrorMessage =
             disabled={isGoogleSubmitting || isSubmitting}
           >
             <GoogleLogo />
-            <span>{isGoogleSubmitting ? 'Redirecting to Google...' : 'Continue with Google'}</span>
+            <span>{isGoogleSubmitting ? t('auth.googlePleaseWait') : t('auth.googleButton')}</span>
           </button>
         </section>
 
         <div className="my-4 flex items-center gap-3">
           <span className="h-px flex-1 bg-slate-200" />
           <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
-            {isLogin ? 'Or sign in manually' : 'Or sign up manually'}
+            {manualSectionLabel}
           </span>
           <span className="h-px flex-1 bg-slate-200" />
         </div>
 
         <section>
-          <h2 className="mb-2 text-sm font-semibold text-slate-900">
-            {isLogin ? 'Email and password' : 'Create account with email'}
-          </h2>
+          <h2 className="mb-2 text-sm font-semibold text-slate-900">{manualSectionLabel}</h2>
           <form className="flex flex-col gap-2.5" onSubmit={handleSubmit}>
             <label htmlFor="email" className="text-[13px] font-semibold text-slate-800">{t('common.email')}</label>
             <input
