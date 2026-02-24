@@ -51,6 +51,39 @@ Get your Supabase values in **Project Settings -> API**.
 Keep `SUPABASE_API_KEY_SECRET` server-side only. Do not expose it in frontend env files.
 Configure Stripe webhooks to `POST /api/billing/webhook` so successful checkouts upgrade the user plan.
 
+#### 2.1 Configure frontend Supabase OAuth variables (local)
+
+Create `frontend/.env.local`:
+
+```bash
+VITE_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
+VITE_SUPABASE_ANON_KEY=eyJ...
+VITE_SUPABASE_REDIRECT_URL=http://localhost:5173/auth/callback
+```
+
+- `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are required for browser OAuth.
+- `VITE_SUPABASE_REDIRECT_URL` should point to your frontend OAuth callback route. For local dev, use `http://localhost:5173/auth/callback`.
+- Keep the service role key (`SUPABASE_API_KEY_SECRET`) server-side only.
+
+#### 2.2 Configure Google provider and callback URLs in Supabase
+
+Reference: https://supabase.com/docs/guides/auth/social-login/auth-google
+
+1. In **Google Cloud Console**, create an OAuth client (`Web application`) and set:
+   - Authorized JavaScript origins:
+     - `http://localhost:5173`
+     - `https://YOUR_PRODUCTION_DOMAIN`
+   - Authorized redirect URIs:
+     - `https://YOUR_PROJECT_REF.supabase.co/auth/v1/callback`
+2. In **Supabase Dashboard -> Authentication -> Sign In / Providers -> Google**:
+   - Enable Google.
+   - Paste the Google OAuth client ID and client secret.
+3. In **Supabase Dashboard -> Authentication -> URL Configuration**:
+   - Set **Site URL** to your production app origin (example: `https://YOUR_PRODUCTION_DOMAIN`).
+   - Add **Redirect URLs** for both local and production callbacks:
+     - `http://localhost:5173/auth/callback`
+     - `https://YOUR_PRODUCTION_DOMAIN/auth/callback`
+
 ### 3. Create Supabase Database Tables
 
 Run the SQL in `backend/supabase_schema.sql` inside your Supabase project (SQL Editor).
@@ -184,11 +217,15 @@ Why `npm install` instead of `npm ci`:
 
 ```bash
 VITE_API_BASE_URL=https://YOUR_BACKEND_DOMAIN.up.railway.app
+VITE_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
+VITE_SUPABASE_ANON_KEY=eyJ...
+VITE_SUPABASE_REDIRECT_URL=https://YOUR_FRONTEND_DOMAIN.up.railway.app/auth/callback
 VITE_PREVIEW_ALLOWED_HOSTS=front-end-production-4235.up.railway.app,another-frontend-domain.up.railway.app
 ```
 
 `VITE_PREVIEW_ALLOWED_HOSTS` is a comma-separated host allowlist used by `vite preview`.
 If unset, the frontend falls back to allowing `front-end-production-4235.up.railway.app`.
+`VITE_SUPABASE_REDIRECT_URL` must match a configured Supabase redirect URL.
 
 4. Deploy and open the frontend public URL.
 
@@ -196,6 +233,7 @@ If unset, the frontend falls back to allowing `front-end-production-4235.up.rail
 
 - Backend `CORS_ALLOW_ORIGINS` must include the deployed frontend URL.
 - Frontend `VITE_API_BASE_URL` must point to the deployed backend URL.
+- Frontend `VITE_SUPABASE_REDIRECT_URL` must be listed in Supabase **Authentication -> URL Configuration -> Redirect URLs**.
 - If frontend domain changes, update backend `CORS_ALLOW_ORIGINS` and redeploy backend.
 
 ## Credits
