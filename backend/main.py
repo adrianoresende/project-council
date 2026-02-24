@@ -58,7 +58,7 @@ from .files import (
     resolve_message_prompt,
 )
 
-app = FastAPI(title="LLM Council API")
+app = FastAPI(title="LLM Council API", debug=True)
 bearer_scheme = HTTPBearer()
 FREE_PLAN_LIMIT_ERROR_CODE = "FREE_DAILY_QUERY_LIMIT_REACHED"
 DEFAULT_DAILY_RESET_TIMEZONE = "UTC"
@@ -799,6 +799,7 @@ async def register(request: AuthRequest):
 @app.post("/api/auth/login", response_model=AuthResponse)
 async def login(request: AuthRequest):
     """Sign in an existing Supabase user."""
+    print("==== BEFORE LOGIN USER ====")
     result = await login_user(request.email, request.password)
     return {
         "access_token": result.get("access_token"),

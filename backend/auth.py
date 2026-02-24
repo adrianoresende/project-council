@@ -95,7 +95,7 @@ async def login_user(email: str, password: str) -> Dict[str, Any]:
     """Sign in a Supabase user with email/password."""
     supabase_url, api_key = _ensure_supabase_config()
     url = f"{supabase_url}/auth/v1/token?grant_type=password"
-
+    print("==== SUBABASE LOGIN HERE ====")
     async with httpx.AsyncClient(timeout=20) as client:
         response = await client.post(
             url,
@@ -160,7 +160,9 @@ async def get_user_by_id_admin(user_id: str) -> Dict[str, Any]:
     raise HTTPException(status_code=502, detail="Invalid user payload from Supabase.")
 
 
-async def _update_user_app_metadata(user_id: str, app_metadata: Dict[str, Any]) -> Dict[str, Any]:
+async def _update_user_app_metadata(
+    user_id: str, app_metadata: Dict[str, Any]
+) -> Dict[str, Any]:
     """Persist full app_metadata payload for a Supabase auth user."""
     supabase_url, api_key = _ensure_supabase_config()
     url = f"{supabase_url}/auth/v1/admin/users/{user_id}"
