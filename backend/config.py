@@ -15,17 +15,29 @@ SUPABASE_SECRET_KEY = os.getenv("SUPABASE_API_KEY_SECRET") or os.getenv(
 )
 
 # Runtime environment (development | production)
-COUNCIL_ENV = (
-    (
-        os.getenv("COUNCIL_ENV")
-        or os.getenv("APP_ENV")
-        or os.getenv("ENVIRONMENT")
-        or "production"
-    )
-    .strip()
-    .lower()
-)
 DEVELOPMENT_ENV_NAMES = {"development", "dev", "local"}
+
+
+def _strip_wrapping_quotes(raw_value: str) -> str:
+    """Trim whitespace and optional matching single/double quotes."""
+    normalized_value = raw_value.strip()
+    while (
+        len(normalized_value) >= 2
+        and normalized_value[0] == normalized_value[-1]
+        and normalized_value[0] in {"'", '"'}
+    ):
+        normalized_value = normalized_value[1:-1].strip()
+    return normalized_value
+
+
+def resolve_council_env(
+    raw_council_env: str | None,
+    raw_app_env: str | None,
+    raw_environment: str | None,
+) -> str:
+    """Resolve runtime environment from supported env var fallbacks."""
+    raw_value = raw_council_env or raw_app_env or raw_environment or "production"
+    return _strip_wrapping_quotes(raw_value).lower()
 
 
 def _parse_cors_origins(raw_origins: str | None) -> list[str]:
@@ -33,10 +45,14 @@ def _parse_cors_origins(raw_origins: str | None) -> list[str]:
     if not raw_origins:
         return []
 
+    normalized_origins_value = _strip_wrapping_quotes(raw_origins)
+    if not normalized_origins_value:
+        return []
+
     parsed_origins: list[str] = []
     seen_origins: set[str] = set()
-    for origin in raw_origins.split(","):
-        normalized_origin = origin.strip().rstrip("/")
+    for origin in normalized_origins_value.split(","):
+        normalized_origin = _strip_wrapping_quotes(origin).rstrip("/")
         if not normalized_origin:
             continue
         if normalized_origin == "*":
@@ -65,6 +81,13 @@ def resolve_cors_allow_origins(
     if environment in DEVELOPMENT_ENV_NAMES:
         return ["http://localhost:5173", "http://localhost:3000"]
     return []
+
+
+COUNCIL_ENV = resolve_council_env(
+    os.getenv("COUNCIL_ENV"),
+    os.getenv("APP_ENV"),
+    os.getenv("ENVIRONMENT"),
+)
 
 DEVELOPMENT_COUNCIL_MODELS = [
     "openai/gpt-5-nano",

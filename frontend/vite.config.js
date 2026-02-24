@@ -2,7 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
-const DEFAULT_PREVIEW_ALLOWED_HOSTS = ['front-end-production-4235.up.railway.app']
+const DEFAULT_PREVIEW_ALLOWED_HOSTS = ['front-end-development-2ed0.up.railway.app']
 
 const previewAllowedHostsFromEnv = (process.env.VITE_PREVIEW_ALLOWED_HOSTS ?? '')
   .split(',')
