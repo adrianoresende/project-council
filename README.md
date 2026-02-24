@@ -187,11 +187,12 @@ OPENROUTER_API_KEY=sk-or-v1-...
 SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
 SUPABASE_API_KEY_SECRET=sb_secret_...
 COUNCIL_ENV=production
-CORS_ALLOW_ORIGINS=https://YOUR_FRONTEND_DOMAIN.up.railway.app
+CORS_ALLOW_ORIGINS=https://front-end-development-2ed0.up.railway.app
 ```
 
 For first successful boot, `OPENROUTER_API_KEY`, `SUPABASE_URL`, and `SUPABASE_API_KEY_SECRET` must be set.
 Set `CORS_ALLOW_ORIGINS` to one or more comma-separated frontend origins.
+Do not wrap values in quotes in Railway (`COUNCIL_ENV=production`, not `COUNCIL_ENV="production"`).
 
 4. Deploy and verify the backend responds on `/` with:
 

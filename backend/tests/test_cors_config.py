@@ -6,6 +6,14 @@ from backend import config
 
 
 class CorsConfigTests(unittest.TestCase):
+    def test_resolve_council_env_strips_wrapping_quotes(self):
+        resolved = config.resolve_council_env('"development"', None, None)
+        self.assertEqual(resolved, "development")
+
+    def test_resolve_council_env_keeps_existing_fallback_behavior(self):
+        resolved = config.resolve_council_env(None, "dev", None)
+        self.assertEqual(resolved, "dev")
+
     def test_parse_cors_origins_trims_deduplicates_and_strips_trailing_slash(self):
         parsed = config._parse_cors_origins(
             " https://app.example.com/ ,https://app.example.com, http://localhost:5173/ "
@@ -15,9 +23,31 @@ class CorsConfigTests(unittest.TestCase):
             ["https://app.example.com", "http://localhost:5173"],
         )
 
+    def test_parse_cors_origins_strips_wrapping_quotes(self):
+        parsed = config._parse_cors_origins(
+            '"https://app.example.com/" , \'http://localhost:5173/\''
+        )
+        self.assertEqual(
+            parsed,
+            ["https://app.example.com", "http://localhost:5173"],
+        )
+
+    def test_parse_cors_origins_strips_wrapping_quotes_from_full_value(self):
+        parsed = config._parse_cors_origins(
+            '"https://app.example.com/,http://localhost:5173/"'
+        )
+        self.assertEqual(
+            parsed,
+            ["https://app.example.com", "http://localhost:5173"],
+        )
+
     def test_parse_cors_origins_rejects_wildcard(self):
         with self.assertRaises(ValueError):
             config._parse_cors_origins("*,https://app.example.com")
+
+    def test_parse_cors_origins_rejects_quoted_wildcard(self):
+        with self.assertRaises(ValueError):
+            config._parse_cors_origins('"*"')
 
     def test_resolve_cors_allow_origins_uses_development_defaults(self):
         resolved = config.resolve_cors_allow_origins("", "development")
