@@ -154,11 +154,12 @@ OPENROUTER_API_KEY=sk-or-v1-...
 SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
 SUPABASE_API_KEY_SECRET=sb_secret_...
 COUNCIL_ENV=production
-CORS_ALLOW_ORIGINS=https://YOUR_FRONTEND_DOMAIN.up.railway.app
+CORS_ALLOW_ORIGINS=https://front-end-development-2ed0.up.railway.app
 ```
 
 For first successful boot, `OPENROUTER_API_KEY`, `SUPABASE_URL`, and `SUPABASE_API_KEY_SECRET` must be set.
 Set `CORS_ALLOW_ORIGINS` to one or more comma-separated frontend origins.
+Do not wrap values in quotes in Railway (`COUNCIL_ENV=production`, not `COUNCIL_ENV="production"`).
 
 4. Deploy and verify the backend responds on `/` with:
 
@@ -184,18 +185,21 @@ Why `npm install` instead of `npm ci`:
 
 ```bash
 VITE_API_BASE_URL=https://YOUR_BACKEND_DOMAIN.up.railway.app
-VITE_PREVIEW_ALLOWED_HOSTS=front-end-production-4235.up.railway.app,another-frontend-domain.up.railway.app
+VITE_PREVIEW_ALLOWED_HOSTS=front-end-development-2ed0.up.railway.app
 ```
 
 `VITE_PREVIEW_ALLOWED_HOSTS` is a comma-separated host allowlist used by `vite preview`.
-If unset, the frontend falls back to allowing `front-end-production-4235.up.railway.app`.
+Use only hostnames (no `https://`) and do not wrap values in quotes.
+If unset, the frontend falls back to allowing `front-end-development-2ed0.up.railway.app`.
+`VITE_API_BASE_URL` must be the **public domain of the Railway backend service (`Back-end`)**.
 
 4. Deploy and open the frontend public URL.
 
 ### 3. Wiring checklist
 
-- Backend `CORS_ALLOW_ORIGINS` must include the deployed frontend URL.
-- Frontend `VITE_API_BASE_URL` must point to the deployed backend URL.
+- Backend `CORS_ALLOW_ORIGINS` must include `https://front-end-development-2ed0.up.railway.app`.
+- Frontend `VITE_API_BASE_URL` must point to the deployed backend (`Back-end`) public URL.
+- Frontend `VITE_PREVIEW_ALLOWED_HOSTS` must include `front-end-development-2ed0.up.railway.app`.
 - If frontend domain changes, update backend `CORS_ALLOW_ORIGINS` and redeploy backend.
 
 ## Credits
