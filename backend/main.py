@@ -63,6 +63,10 @@ bearer_scheme = HTTPBearer()
 FREE_PLAN_LIMIT_ERROR_CODE = "FREE_DAILY_QUERY_LIMIT_REACHED"
 DEFAULT_DAILY_RESET_TIMEZONE = "UTC"
 
+print("==== CORS_ALLOW_ORIGINS ====")
+print(CORS_ALLOW_ORIGINS)
+print("=============================")
+
 # Configure CORS from backend config (dev localhost defaults, explicit production origins).
 app.add_middleware(
     CORSMiddleware,
@@ -75,11 +79,13 @@ app.add_middleware(
 
 class CreateConversationRequest(BaseModel):
     """Request to create a new conversation."""
+
     pass
 
 
 class ConversationMetadata(BaseModel):
     """Conversation metadata for list view."""
+
     id: str
     created_at: str
     title: str
@@ -90,6 +96,7 @@ class ConversationMetadata(BaseModel):
 
 class Conversation(BaseModel):
     """Full conversation with all messages."""
+
     id: str
     created_at: str
     title: str
@@ -100,12 +107,14 @@ class Conversation(BaseModel):
 
 class AuthRequest(BaseModel):
     """Email/password auth request payload."""
+
     email: str
     password: str
 
 
 class AuthResponse(BaseModel):
     """Auth response for login/register."""
+
     access_token: str | None
     user: Dict[str, Any]
     requires_email_confirmation: bool = False
@@ -113,11 +122,13 @@ class AuthResponse(BaseModel):
 
 class AddCreditsRequest(BaseModel):
     """Request payload for adding credits."""
+
     amount: int = Field(gt=0, le=100000)
 
 
 class CreditsResponse(BaseModel):
     """Current daily quota balance for the authenticated account."""
+
     credits: int
     unit: str
     limit: int
@@ -126,12 +137,14 @@ class CreditsResponse(BaseModel):
 
 class AccountSummaryResponse(BaseModel):
     """Account summary for profile page."""
+
     email: str
     plan: str
 
 
 class AdminUserResponse(BaseModel):
     """Admin-facing user row payload."""
+
     user_id: str
     email: str
     role: str
@@ -143,16 +156,19 @@ class AdminUserResponse(BaseModel):
 
 class AdminUserRoleUpdateRequest(BaseModel):
     """Request payload for updating a user's app role."""
+
     role: str
 
 
 class AdminUserPlanUpdateRequest(BaseModel):
     """Request payload for updating a user's plan metadata."""
+
     plan: str
 
 
 class AdminUserQuotaResetResponse(BaseModel):
     """Admin response payload when resetting a user's daily quota."""
+
     user_id: str
     plan: str
     unit: str
@@ -162,6 +178,7 @@ class AdminUserQuotaResetResponse(BaseModel):
 
 class BillingPaymentResponse(BaseModel):
     """A processed Stripe payment linked to an account."""
+
     stripe_checkout_session_id: str
     plan: str
     amount_total: int
@@ -182,17 +199,20 @@ class BillingPaymentResponse(BaseModel):
 
 class ArchiveConversationRequest(BaseModel):
     """Request payload for updating archived state."""
+
     archived: bool = True
 
 
 class CreateProCheckoutSessionRequest(BaseModel):
     """Request payload for Stripe checkout session creation."""
+
     success_url: str
     cancel_url: str
 
 
 class ConfirmCheckoutSessionRequest(BaseModel):
     """Request payload to confirm a Stripe checkout session."""
+
     session_id: str
 
 
@@ -231,7 +251,9 @@ def _get_user_plan(user: Dict[str, Any]) -> str:
     """Resolve current account plan from auth metadata."""
     user_metadata = user.get("user_metadata") or {}
     app_metadata = user.get("app_metadata") or {}
-    billing_metadata = app_metadata.get("billing") if isinstance(app_metadata, dict) else {}
+    billing_metadata = (
+        app_metadata.get("billing") if isinstance(app_metadata, dict) else {}
+    )
     if not isinstance(billing_metadata, dict):
         billing_metadata = {}
     return _normalize_plan(
@@ -278,7 +300,9 @@ def _build_admin_user_row(user: Dict[str, Any]) -> Dict[str, Any]:
     """Build the stable admin users API row contract from a Supabase user."""
     user_id = user.get("id")
     if not isinstance(user_id, str) or not user_id.strip():
-        raise HTTPException(status_code=502, detail="Invalid user payload from Supabase.")
+        raise HTTPException(
+            status_code=502, detail="Invalid user payload from Supabase."
+        )
 
     email = user.get("email")
     if not isinstance(email, str):
@@ -324,7 +348,9 @@ def _normalize_iana_timezone(value: Any) -> str | None:
     return getattr(zone, "key", normalized)
 
 
-def _resolve_user_timezone(user: Dict[str, Any], requested_timezone: str | None = None) -> str:
+def _resolve_user_timezone(
+    user: Dict[str, Any], requested_timezone: str | None = None
+) -> str:
     """
     Resolve timezone used for free-plan daily resets.
 
@@ -358,7 +384,9 @@ def _resolve_user_timezone(user: Dict[str, Any], requested_timezone: str | None 
 
 def _next_local_midnight_reset_at(timezone_name: str) -> str:
     """Return the next local midnight for a timezone as an ISO UTC timestamp."""
-    resolved_timezone = _normalize_iana_timezone(timezone_name) or DEFAULT_DAILY_RESET_TIMEZONE
+    resolved_timezone = (
+        _normalize_iana_timezone(timezone_name) or DEFAULT_DAILY_RESET_TIMEZONE
+    )
     local_timezone = ZoneInfo(resolved_timezone)
     now_utc = datetime.now(timezone.utc)
     now_local = now_utc.astimezone(local_timezone)
@@ -372,7 +400,9 @@ def _next_local_midnight_reset_at(timezone_name: str) -> str:
 
 def _raise_free_daily_query_limit_error(timezone_name: str) -> None:
     """Raise a stable actionable 402 payload for free-plan daily query limit."""
-    resolved_timezone = _normalize_iana_timezone(timezone_name) or DEFAULT_DAILY_RESET_TIMEZONE
+    resolved_timezone = (
+        _normalize_iana_timezone(timezone_name) or DEFAULT_DAILY_RESET_TIMEZONE
+    )
     raise HTTPException(
         status_code=402,
         detail={
@@ -595,7 +625,9 @@ async def _stripe_request(
 ) -> Dict[str, Any]:
     """Execute an authenticated Stripe API request and return parsed JSON."""
     if not STRIPE_SECRET_KEY:
-        raise HTTPException(status_code=500, detail="Stripe is not configured on server.")
+        raise HTTPException(
+            status_code=500, detail="Stripe is not configured on server."
+        )
 
     url = f"https://api.stripe.com{path}"
     async with httpx.AsyncClient(timeout=30) as client:
@@ -623,10 +655,14 @@ async def _stripe_request(
     try:
         payload = response.json()
     except ValueError as error:
-        raise HTTPException(status_code=502, detail="Invalid response from Stripe.") from error
+        raise HTTPException(
+            status_code=502, detail="Invalid response from Stripe."
+        ) from error
 
     if not isinstance(payload, dict):
-        raise HTTPException(status_code=502, detail="Invalid response shape from Stripe.")
+        raise HTTPException(
+            status_code=502, detail="Invalid response shape from Stripe."
+        )
     return payload
 
 
@@ -639,10 +675,14 @@ async def _link_checkout_session_to_plan(
     """Update the account plan based on a Stripe checkout session payload."""
     user_id = _extract_checkout_user_id(checkout_session)
     if not user_id:
-        raise HTTPException(status_code=400, detail="Checkout session is missing user mapping.")
+        raise HTTPException(
+            status_code=400, detail="Checkout session is missing user mapping."
+        )
 
     if checkout_session.get("mode") != "subscription":
-        raise HTTPException(status_code=400, detail="Checkout session is not a subscription.")
+        raise HTTPException(
+            status_code=400, detail="Checkout session is not a subscription."
+        )
 
     status = checkout_session.get("status")
     if status != "complete":
@@ -665,7 +705,9 @@ async def _link_checkout_session_to_plan(
 
     next_payment_at = None
     if isinstance(subscription_field, dict):
-        next_payment_at = _iso_datetime_from_unix(subscription_field.get("current_period_end"))
+        next_payment_at = _iso_datetime_from_unix(
+            subscription_field.get("current_period_end")
+        )
     if not next_payment_at and stripe_subscription_id:
         try:
             subscription_payload = await _stripe_request(
@@ -692,9 +734,7 @@ async def _link_checkout_session_to_plan(
         event_type=event_type,
         stripe_event_id=stripe_event_id,
         paid_at=(
-            datetime.now(timezone.utc).isoformat()
-            if should_activate_pro
-            else None
+            datetime.now(timezone.utc).isoformat() if should_activate_pro else None
         ),
         next_payment_at=next_payment_at,
     )
@@ -744,7 +784,9 @@ async def register(request: AuthRequest):
     registered_user_id = registered_user.get("id")
     if isinstance(registered_user_id, str) and registered_user_id:
         with suppress(HTTPException):
-            registered_user = await ensure_default_user_role_metadata(registered_user_id)
+            registered_user = await ensure_default_user_role_metadata(
+                registered_user_id
+            )
 
     session = result.get("session")
     return {
@@ -795,8 +837,12 @@ async def create_pro_checkout_session(
     user: Dict[str, Any] = Depends(get_current_user),
 ):
     """Create a Stripe checkout session for the Pro plan."""
-    if not _is_valid_absolute_url(request.success_url) or not _is_valid_absolute_url(request.cancel_url):
-        raise HTTPException(status_code=400, detail="Invalid success_url or cancel_url.")
+    if not _is_valid_absolute_url(request.success_url) or not _is_valid_absolute_url(
+        request.cancel_url
+    ):
+        raise HTTPException(
+            status_code=400, detail="Invalid success_url or cancel_url."
+        )
 
     user_email = user.get("email")
     payload = {
@@ -847,7 +893,9 @@ async def confirm_checkout_session(
 
     checkout_user_id = _extract_checkout_user_id(checkout_session)
     if checkout_user_id != user["id"]:
-        raise HTTPException(status_code=403, detail="Checkout session does not belong to this user.")
+        raise HTTPException(
+            status_code=403, detail="Checkout session does not belong to this user."
+        )
 
     result = await _link_checkout_session_to_plan(
         checkout_session,
@@ -880,7 +928,9 @@ async def stripe_webhook(
     try:
         event = json.loads(payload.decode("utf-8"))
     except ValueError as error:
-        raise HTTPException(status_code=400, detail="Invalid webhook payload.") from error
+        raise HTTPException(
+            status_code=400, detail="Invalid webhook payload."
+        ) from error
 
     if not isinstance(event, dict):
         raise HTTPException(status_code=400, detail="Invalid webhook payload shape.")
@@ -993,7 +1043,9 @@ async def update_admin_user_plan(
     return _build_admin_user_row(updated_user)
 
 
-@app.post("/api/admin/users/{user_id}/quota/reset", response_model=AdminUserQuotaResetResponse)
+@app.post(
+    "/api/admin/users/{user_id}/quota/reset", response_model=AdminUserQuotaResetResponse
+)
 async def reset_admin_user_quota(
     user_id: str,
     _: Dict[str, Any] = Depends(get_current_admin_user),
@@ -1102,7 +1154,9 @@ async def send_message(
     Send a message and run the 3-stage council process.
     Returns the complete response with all stages.
     """
-    message_content, incoming_files = await extract_message_content_and_files(http_request)
+    message_content, incoming_files = await extract_message_content_and_files(
+        http_request
+    )
     if not message_content.strip() and not incoming_files:
         raise HTTPException(status_code=400, detail="Message text or file is required.")
 
@@ -1131,8 +1185,8 @@ async def send_message(
         # Keep current balance unless first successful Stage 1 response triggers consumption.
         remaining_balance_after = remaining_queries
 
-    attachment_parts, safe_user_files, needs_pdf_parser = await prepare_uploaded_files_for_model(
-        incoming_files
+    attachment_parts, safe_user_files, needs_pdf_parser = (
+        await prepare_uploaded_files_for_model(incoming_files)
     )
     resolved_prompt = resolve_message_prompt(message_content, safe_user_files)
     defer_first_message_persistence = plan == "free" and is_first_message
@@ -1205,7 +1259,9 @@ async def send_message(
         metadata = {
             "label_to_model": {},
             "aggregate_rankings": [],
-            "usage": summarize_council_usage(stage1_results, stage2_results, stage3_result),
+            "usage": summarize_council_usage(
+                stage1_results, stage2_results, stage3_result
+            ),
         }
     else:
         # Stage 2
@@ -1215,7 +1271,9 @@ async def send_message(
             conversation_history=conversation_history,
             session_id=conversation_session_id,
         )
-        aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
+        aggregate_rankings = calculate_aggregate_rankings(
+            stage2_results, label_to_model
+        )
 
         # Stage 3
         stage3_result = await stage3_synthesize_final(
@@ -1230,18 +1288,24 @@ async def send_message(
         metadata = {
             "label_to_model": label_to_model,
             "aggregate_rankings": aggregate_rankings,
-            "usage": summarize_council_usage(stage1_results, stage2_results, stage3_result),
+            "usage": summarize_council_usage(
+                stage1_results, stage2_results, stage3_result
+            ),
         }
 
     if is_first_message:
         metadata["title_usage"] = title_usage
         metadata_usage = metadata.get("usage", empty_usage_summary())
         metadata["usage"] = {
-            "input_tokens": int(metadata_usage.get("input_tokens", 0)) + int(title_usage.get("input_tokens", 0)),
-            "output_tokens": int(metadata_usage.get("output_tokens", 0)) + int(title_usage.get("output_tokens", 0)),
-            "total_tokens": int(metadata_usage.get("total_tokens", 0)) + int(title_usage.get("total_tokens", 0)),
+            "input_tokens": int(metadata_usage.get("input_tokens", 0))
+            + int(title_usage.get("input_tokens", 0)),
+            "output_tokens": int(metadata_usage.get("output_tokens", 0))
+            + int(title_usage.get("output_tokens", 0)),
+            "total_tokens": int(metadata_usage.get("total_tokens", 0))
+            + int(title_usage.get("total_tokens", 0)),
             "total_cost": round(
-                float(metadata_usage.get("total_cost", 0.0)) + float(title_usage.get("cost", 0.0) or 0.0),
+                float(metadata_usage.get("total_cost", 0.0))
+                + float(title_usage.get("cost", 0.0) or 0.0),
                 8,
             ),
             "model_calls": int(metadata_usage.get("model_calls", 0)) + 1,
@@ -1249,7 +1313,9 @@ async def send_message(
         stage3_result["title_usage"] = title_usage
 
     if plan == "pro":
-        tokens_to_consume = max(0, int((metadata.get("usage") or {}).get("total_tokens", 0)))
+        tokens_to_consume = max(
+            0, int((metadata.get("usage") or {}).get("total_tokens", 0))
+        )
         try:
             remaining_balance_after = await storage.consume_account_tokens(
                 user["id"],
@@ -1260,7 +1326,9 @@ async def send_message(
             raise HTTPException(status_code=402, detail=str(error)) from error
     elif not is_first_message:
         # Existing conversation continuation stays allowed and does not consume a new free query.
-        remaining_balance_after = await _get_remaining_daily_queries(user, resolved_timezone)
+        remaining_balance_after = await _get_remaining_daily_queries(
+            user, resolved_timezone
+        )
 
     # Add assistant message with all stages
     await storage.add_assistant_message(
@@ -1280,7 +1348,9 @@ async def send_message(
         "stage3": stage3_result,
         "metadata": metadata,
         "credits": remaining_balance_after,
-        "conversation_usage": (updated_conversation or {}).get("usage", empty_usage_summary()),
+        "conversation_usage": (updated_conversation or {}).get(
+            "usage", empty_usage_summary()
+        ),
     }
 
 
@@ -1295,7 +1365,9 @@ async def send_message_stream(
     Send a message and stream the 3-stage council process.
     Returns Server-Sent Events as each stage completes.
     """
-    message_content, incoming_files = await extract_message_content_and_files(http_request)
+    message_content, incoming_files = await extract_message_content_and_files(
+        http_request
+    )
     if not message_content.strip() and not incoming_files:
         raise HTTPException(status_code=400, detail="Message text or file is required.")
 
@@ -1324,8 +1396,8 @@ async def send_message_stream(
         # Keep current balance unless first successful Stage 1 response triggers consumption.
         remaining_balance_after = remaining_queries
 
-    attachment_parts, safe_user_files, needs_pdf_parser = await prepare_uploaded_files_for_model(
-        incoming_files
+    attachment_parts, safe_user_files, needs_pdf_parser = (
+        await prepare_uploaded_files_for_model(incoming_files)
     )
     resolved_prompt = resolve_message_prompt(message_content, safe_user_files)
 
@@ -1342,7 +1414,9 @@ async def send_message_stream(
         stage2_started = False
         stage3_started = False
 
-        async def resolve_title_result(wait_for_completion: bool) -> Dict[str, Any] | None:
+        async def resolve_title_result(
+            wait_for_completion: bool,
+        ) -> Dict[str, Any] | None:
             if title_task is None:
                 return None
 
@@ -1372,7 +1446,9 @@ async def send_message_stream(
 
             resolved_title = title_result
             if resolved_title is None:
-                resolved_title = await resolve_title_result(wait_for_completion=wait_for_title)
+                resolved_title = await resolve_title_result(
+                    wait_for_completion=wait_for_title
+                )
 
             if cancelled and stage3_result is None:
                 stage3_result = {
@@ -1392,14 +1468,18 @@ async def send_message_stream(
             metadata = {
                 "label_to_model": label_to_model,
                 "aggregate_rankings": aggregate_rankings,
-                "usage": summarize_council_usage(stage1_results, stage2_results, stage3_result),
+                "usage": summarize_council_usage(
+                    stage1_results, stage2_results, stage3_result
+                ),
             }
 
             if isinstance(resolved_title, dict):
                 title = resolved_title.get("title", "New Conversation")
                 title_usage = resolved_title.get("usage", empty_usage_summary())
                 if save_title:
-                    await storage.update_conversation_title(conversation_id, user["id"], title)
+                    await storage.update_conversation_title(
+                        conversation_id, user["id"], title
+                    )
 
                 metadata["title_usage"] = title_usage
                 metadata_usage = metadata.get("usage", empty_usage_summary())
@@ -1427,7 +1507,11 @@ async def send_message_stream(
 
                 # Fallback: when cancellation interrupts usage reporting but model
                 # work already started, charge at least 1 token.
-                if cancelled and tokens_to_consume <= 0 and (model_calls > 0 or started_any_stage):
+                if (
+                    cancelled
+                    and tokens_to_consume <= 0
+                    and (model_calls > 0 or started_any_stage)
+                ):
                     tokens_to_consume = 1
 
                 if tokens_to_consume > 0:
@@ -1451,7 +1535,9 @@ async def send_message_stream(
                     )
 
             if not user_message_saved:
-                updated_conversation = await storage.get_conversation(conversation_id, user["id"]) or {}
+                updated_conversation = (
+                    await storage.get_conversation(conversation_id, user["id"]) or {}
+                )
                 return metadata, updated_conversation, resolved_title
 
             await storage.add_assistant_message(
@@ -1462,7 +1548,9 @@ async def send_message_stream(
                 stage3_result,
                 id_session=conversation_session_id,
             )
-            updated_conversation = await storage.get_conversation(conversation_id, user["id"]) or {}
+            updated_conversation = (
+                await storage.get_conversation(conversation_id, user["id"]) or {}
+            )
             return metadata, updated_conversation, resolved_title
 
         try:
@@ -1523,7 +1611,9 @@ async def send_message_stream(
                 conversation_history=conversation_history,
                 session_id=conversation_session_id,
             )
-            aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
+            aggregate_rankings = calculate_aggregate_rankings(
+                stage2_results, label_to_model
+            )
 
             if await http_request.is_disconnected():
                 await persist_turn(cancelled=True, wait_for_title=False)
@@ -1583,10 +1673,11 @@ async def send_message_stream(
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-        }
+        },
     )
 
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8001)
