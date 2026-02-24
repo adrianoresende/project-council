@@ -25,11 +25,18 @@ export const translations = {
     auth: {
       loginSubtitle: "Log in to access your chat",
       registerSubtitle: "Create an account to start chatting",
+      ssoSectionLabel: "Sign in with Google",
+      manualSectionLabel: "Or continue with email and password",
       emailAndPasswordRequired: "Email and password are required.",
       accountCreatedNotice:
         "Account created. Confirm your email in Supabase, then log in.",
       authenticationFailed: "Authentication failed.",
+      googleAuthenticationFailed: "Google authentication failed.",
+      googleAuthenticationUnavailable:
+        "Google authentication is not available right now.",
       pleaseWait: "Please wait...",
+      googlePleaseWait: "Connecting to Google...",
+      googleButton: "Continue with Google",
       loginButton: "Log in",
       registerButton: "Register",
       needAccount: "Need an account?",
@@ -233,11 +240,18 @@ export const translations = {
     auth: {
       loginSubtitle: "Inicia sesión para acceder a tu chat",
       registerSubtitle: "Crea una cuenta para comenzar a chatear",
+      ssoSectionLabel: "Iniciar sesión con Google",
+      manualSectionLabel: "O continúa con correo y contraseña",
       emailAndPasswordRequired: "El correo y la contraseña son obligatorios.",
       accountCreatedNotice:
         "Cuenta creada. Confirma tu correo en Supabase y luego inicia sesión.",
       authenticationFailed: "Falló la autenticación.",
+      googleAuthenticationFailed: "Falló la autenticación con Google.",
+      googleAuthenticationUnavailable:
+        "La autenticación con Google no está disponible en este momento.",
       pleaseWait: "Espera...",
+      googlePleaseWait: "Conectando con Google...",
+      googleButton: "Continuar con Google",
       loginButton: "Iniciar sesión",
       registerButton: "Registrarse",
       needAccount: "¿Necesitas una cuenta?",
@@ -447,11 +461,18 @@ export const translations = {
     auth: {
       loginSubtitle: "Faça login para acessar seu chat",
       registerSubtitle: "Crie uma conta para começar a conversar",
+      ssoSectionLabel: "Entrar com Google",
+      manualSectionLabel: "Ou continue com e-mail e senha",
       emailAndPasswordRequired: "E-mail e senha são obrigatórios.",
       accountCreatedNotice:
         "Conta criada. Confirme seu e-mail no Supabase e depois faça login.",
       authenticationFailed: "Falha na autenticação.",
+      googleAuthenticationFailed: "Falha na autenticação com Google.",
+      googleAuthenticationUnavailable:
+        "A autenticação com Google não está disponível no momento.",
       pleaseWait: "Aguarde...",
+      googlePleaseWait: "Conectando ao Google...",
+      googleButton: "Continuar com Google",
       loginButton: "Entrar",
       registerButton: "Cadastrar",
       needAccount: "Precisa de uma conta?",
