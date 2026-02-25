@@ -88,19 +88,57 @@ COUNCIL_ENV = resolve_council_env(
     os.getenv("APP_ENV"),
     os.getenv("ENVIRONMENT"),
 )
+DEVELOPMENT_ENV_NAMES = {"development", "dev", "local"}
+
+
+def _parse_cors_origins(raw_origins: str | None) -> list[str]:
+    """Parse a comma-separated list of CORS origins."""
+    if not raw_origins:
+        return []
+
+    parsed_origins: list[str] = []
+    seen_origins: set[str] = set()
+    for origin in raw_origins.split(","):
+        normalized_origin = origin.strip().rstrip("/")
+        if not normalized_origin:
+            continue
+        if normalized_origin == "*":
+            raise ValueError(
+                "CORS_ALLOW_ORIGINS does not support '*' when credentials are enabled."
+            )
+        if normalized_origin not in seen_origins:
+            parsed_origins.append(normalized_origin)
+            seen_origins.add(normalized_origin)
+    return parsed_origins
+
+
+def resolve_cors_allow_origins(
+    raw_origins: str | None,
+    environment: str,
+) -> list[str]:
+    """
+    Resolve CORS origins using env overrides and environment-aware defaults.
+
+    Development defaults to localhost origins for convenience.
+    Production defaults to no cross-origin access unless explicitly configured.
+    """
+    parsed_origins = _parse_cors_origins(raw_origins)
+    if parsed_origins:
+        return parsed_origins
+    if environment in DEVELOPMENT_ENV_NAMES:
+        return ["http://localhost:5173", "http://localhost:3000"]
+    return []
 
 DEVELOPMENT_COUNCIL_MODELS = [
     "openai/gpt-5-nano",
     "google/gemini-2.5-flash-lite",
     "anthropic/claude-3-haiku",
-    "x-ai/grok-4.1-fast",
 ]
 
 PRODUCTION_COUNCIL_MODELS = [
-    "openai/gpt-5.1",
-    "google/gemini-3-pro-preview",
-    "anthropic/claude-sonnet-4.5",
-    "x-ai/grok-4",
+    "openai/gpt-5-mini",
+    "google/gemini-3-flash-preview",
+    "anthropic/claude-haiku-4.5",
 ]
 
 if COUNCIL_ENV in DEVELOPMENT_ENV_NAMES:
@@ -108,7 +146,7 @@ if COUNCIL_ENV in DEVELOPMENT_ENV_NAMES:
     DEFAULT_CHAIRMAN_MODEL = "openai/gpt-5-nano"
 else:
     COUNCIL_MODELS = PRODUCTION_COUNCIL_MODELS
-    DEFAULT_CHAIRMAN_MODEL = "google/gemini-3-pro-preview"
+    DEFAULT_CHAIRMAN_MODEL = "google/gemini-3-flash-preview"
 
 # Chairman model - synthesizes final response
 CHAIRMAN_MODEL = os.getenv("CHAIRMAN_MODEL") or DEFAULT_CHAIRMAN_MODEL

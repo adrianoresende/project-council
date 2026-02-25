@@ -174,7 +174,8 @@ export async function resolveSupabaseSession() {
       return { session: null, error: sessionError || null };
     }
 
-    const { data, error } = await supabase.auth.exchangeCodeForSession(authCode);
+    const { data, error } =
+      await supabase.auth.exchangeCodeForSession(authCode);
     return { session: data?.session || null, error: error || null };
   } catch (error) {
     return {
