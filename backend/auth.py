@@ -2,7 +2,6 @@
 
 from typing import Any, Dict, List
 
-import logging
 import httpx
 from fastapi import HTTPException
 
@@ -96,7 +95,6 @@ async def login_user(email: str, password: str) -> Dict[str, Any]:
     """Sign in a Supabase user with email/password."""
     supabase_url, api_key = _ensure_supabase_config()
     url = f"{supabase_url}/auth/v1/token?grant_type=password"
-    logging.info("==== SUBABASE LOGIN HERE ====")
     async with httpx.AsyncClient(timeout=20) as client:
         response = await client.post(
             url,

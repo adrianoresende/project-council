@@ -1,7 +1,7 @@
-import { useState } from 'react';
-import { api } from '../../api';
-import { useI18n } from '../../i18n';
-import { startGoogleOAuthSignIn } from '../../auth/supabase-auth';
+import { useState } from "react";
+import { api } from "../../api";
+import { useI18n } from "../../i18n";
+import { startGoogleOAuthSignIn } from "../../auth/supabase-auth";
 
 function GoogleLogo() {
   return (
@@ -26,33 +26,36 @@ function GoogleLogo() {
   );
 }
 
-export default function AccountAccessPage({ onAuthenticated, oauthErrorMessage = '' }) {
+export default function AccountAccessPage({
+  onAuthenticated,
+  oauthErrorMessage = "",
+}) {
   const { t } = useI18n();
-  const [mode, setMode] = useState('login');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [mode, setMode] = useState("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
-  const [googleError, setGoogleError] = useState('');
-  const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
+  const [googleError, setGoogleError] = useState("");
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
 
-  const isLogin = mode === 'login';
-  const ssoSectionLabel = t('auth.ssoSectionLabel');
-  const manualSectionLabel = t('auth.manualSectionLabel');
+  const isLogin = mode === "login";
+  const ssoSectionLabel = t("auth.ssoSectionLabel");
+  const manualSectionLabel = t("auth.manualSectionLabel");
 
   const handleSubmit = async (event) => {
     event.preventDefault();
 
     if (!email.trim() || !password.trim()) {
-      setError(t('auth.emailAndPasswordRequired'));
+      setError(t("auth.emailAndPasswordRequired"));
       return;
     }
 
     setIsSubmitting(true);
-    setError('');
-    setGoogleError('');
-    setNotice('');
+    setError("");
+    setGoogleError("");
+    setNotice("");
 
     try {
       const response = isLogin
@@ -60,36 +63,36 @@ export default function AccountAccessPage({ onAuthenticated, oauthErrorMessage =
         : await api.register(email, password);
 
       if (!response.access_token) {
-        setNotice(t('auth.accountCreatedNotice'));
+        setNotice(t("auth.accountCreatedNotice"));
         return;
       }
 
       api.setAccessToken(response.access_token);
       onAuthenticated(response.user);
     } catch (submitError) {
-      setError(submitError.message || t('auth.authenticationFailed'));
+      setError(submitError.message || t("auth.authenticationFailed"));
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleGoogleSignIn = async () => {
-    setGoogleError('');
-    setError('');
-    setNotice('');
+    setGoogleError("");
+    setError("");
+    setNotice("");
     setIsGoogleSubmitting(true);
 
     try {
       await startGoogleOAuthSignIn();
     } catch (oauthError) {
-      const oauthMessage = oauthError?.message || '';
+      const oauthMessage = oauthError?.message || "";
       if (
-        oauthMessage.includes('VITE_SUPABASE_URL')
-        || oauthMessage.includes('VITE_SUPABASE_ANON_KEY')
+        oauthMessage.includes("VITE_SUPABASE_URL") ||
+        oauthMessage.includes("VITE_SUPABASE_ANON_KEY")
       ) {
-        setGoogleError(t('auth.googleAuthenticationUnavailable'));
+        setGoogleError(t("auth.googleAuthenticationUnavailable"));
       } else {
-        setGoogleError(oauthMessage || t('auth.googleAuthenticationFailed'));
+        setGoogleError(oauthMessage || t("auth.googleAuthenticationFailed"));
       }
       setIsGoogleSubmitting(false);
     }
@@ -98,15 +101,21 @@ export default function AccountAccessPage({ onAuthenticated, oauthErrorMessage =
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-sky-50 p-4">
       <div className="w-full max-w-md rounded-xl border border-blue-200 bg-white p-7 shadow-[0_10px_30px_rgba(36,68,121,0.08)]">
-        <h1 className="mb-2 text-[28px] text-slate-900">{t('common.appName')}</h1>
+        <h1 className="mb-2 text-[28px] text-slate-900">
+          {t("common.appName")}
+        </h1>
         <p className="mb-4 text-sm text-slate-600">
-          {isLogin ? t('auth.loginSubtitle') : t('auth.registerSubtitle')}
+          {isLogin ? t("auth.loginSubtitle") : t("auth.registerSubtitle")}
         </p>
 
         <section className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-          <h2 className="text-sm font-semibold text-slate-900">{ssoSectionLabel}</h2>
+          <h2 className="text-sm font-semibold text-slate-900">
+            {ssoSectionLabel}
+          </h2>
           {(oauthErrorMessage || googleError) && (
-            <div className="mt-2 text-[13px] text-rose-700">{googleError || oauthErrorMessage}</div>
+            <div className="mt-2 text-[13px] text-rose-700">
+              {googleError || oauthErrorMessage}
+            </div>
           )}
           <button
             type="button"
@@ -115,7 +124,11 @@ export default function AccountAccessPage({ onAuthenticated, oauthErrorMessage =
             disabled={isGoogleSubmitting || isSubmitting}
           >
             <GoogleLogo />
-            <span>{isGoogleSubmitting ? t('auth.googlePleaseWait') : t('auth.googleButton')}</span>
+            <span>
+              {isGoogleSubmitting
+                ? t("auth.googlePleaseWait")
+                : t("auth.googleButton")}
+            </span>
           </button>
         </section>
 
@@ -128,9 +141,13 @@ export default function AccountAccessPage({ onAuthenticated, oauthErrorMessage =
         </div>
 
         <section>
-          <h2 className="mb-2 text-sm font-semibold text-slate-900">{manualSectionLabel}</h2>
           <form className="flex flex-col gap-2.5" onSubmit={handleSubmit}>
-            <label htmlFor="email" className="text-[13px] font-semibold text-slate-800">{t('common.email')}</label>
+            <label
+              htmlFor="email"
+              className="text-[13px] font-semibold text-slate-800"
+            >
+              {t("common.email")}
+            </label>
             <input
               id="email"
               type="email"
@@ -141,19 +158,28 @@ export default function AccountAccessPage({ onAuthenticated, oauthErrorMessage =
               required
             />
 
-            <label htmlFor="password" className="text-[13px] font-semibold text-slate-800">{t('common.password')}</label>
+            <label
+              htmlFor="password"
+              className="text-[13px] font-semibold text-slate-800"
+            >
+              {t("common.password")}
+            </label>
             <input
               id="password"
               type="password"
               className="rounded-lg border border-blue-200 px-3 py-2.5 text-sm text-slate-800 outline-none transition-shadow focus:border-sky-500 focus:ring-4 focus:ring-sky-100"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              autoComplete={isLogin ? 'current-password' : 'new-password'}
+              autoComplete={isLogin ? "current-password" : "new-password"}
               required
             />
 
-            {error && <div className="mt-1 text-[13px] text-rose-700">{error}</div>}
-            {notice && <div className="mt-1 text-[13px] text-emerald-700">{notice}</div>}
+            {error && (
+              <div className="mt-1 text-[13px] text-rose-700">{error}</div>
+            )}
+            {notice && (
+              <div className="mt-1 text-[13px] text-emerald-700">{notice}</div>
+            )}
 
             <button
               type="submit"
@@ -161,27 +187,27 @@ export default function AccountAccessPage({ onAuthenticated, oauthErrorMessage =
               disabled={isSubmitting}
             >
               {isSubmitting
-                ? t('auth.pleaseWait')
+                ? t("auth.pleaseWait")
                 : isLogin
-                  ? t('auth.loginButton')
-                  : t('auth.registerButton')}
+                  ? t("auth.loginButton")
+                  : t("auth.registerButton")}
             </button>
           </form>
         </section>
 
         <div className="mt-4 flex items-center gap-2 text-[13px] text-slate-600">
-          {isLogin ? t('auth.needAccount') : t('auth.alreadyRegistered')}
+          {isLogin ? t("auth.needAccount") : t("auth.alreadyRegistered")}
           <button
             type="button"
             className="bg-transparent p-0 font-semibold text-sky-700"
             onClick={() => {
-              setMode(isLogin ? 'register' : 'login');
-              setError('');
-              setGoogleError('');
-              setNotice('');
+              setMode(isLogin ? "register" : "login");
+              setError("");
+              setGoogleError("");
+              setNotice("");
             }}
           >
-            {isLogin ? t('auth.registerButton') : t('auth.loginButton')}
+            {isLogin ? t("auth.registerButton") : t("auth.loginButton")}
           </button>
         </div>
       </div>
