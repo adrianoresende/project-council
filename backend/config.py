@@ -93,14 +93,12 @@ DEVELOPMENT_COUNCIL_MODELS = [
     "openai/gpt-5-nano",
     "google/gemini-2.5-flash-lite",
     "anthropic/claude-3-haiku",
-    "x-ai/grok-4.1-fast",
 ]
 
 PRODUCTION_COUNCIL_MODELS = [
-    "openai/gpt-5.1",
-    "google/gemini-3-pro-preview",
-    "anthropic/claude-sonnet-4.5",
-    "x-ai/grok-4",
+    "openai/gpt-5-mini",
+    "google/gemini-3-flash-preview",
+    "anthropic/claude-haiku-4.5",
 ]
 
 if COUNCIL_ENV in DEVELOPMENT_ENV_NAMES:
@@ -108,7 +106,7 @@ if COUNCIL_ENV in DEVELOPMENT_ENV_NAMES:
     DEFAULT_CHAIRMAN_MODEL = "openai/gpt-5-nano"
 else:
     COUNCIL_MODELS = PRODUCTION_COUNCIL_MODELS
-    DEFAULT_CHAIRMAN_MODEL = "google/gemini-3-pro-preview"
+    DEFAULT_CHAIRMAN_MODEL = "google/gemini-3-flash-preview"
 
 # Chairman model - synthesizes final response
 CHAIRMAN_MODEL = os.getenv("CHAIRMAN_MODEL") or DEFAULT_CHAIRMAN_MODEL
