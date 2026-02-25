@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const SUPABASE_REDIRECT_URL = import.meta.env.VITE_SUPABASE_REDIRECT_URL;
 
 const OAUTH_QUERY_KEYS = [
   "code",
@@ -28,6 +29,32 @@ function decodeOAuthMessage(value) {
   }
 }
 
+function normalizeRedirectUrl(value) {
+  if (typeof value !== "string") return "";
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+
+  if (typeof window === "undefined") {
+    return trimmed;
+  }
+
+  try {
+    return new URL(trimmed, window.location.origin).toString();
+  } catch {
+    return "";
+  }
+}
+
+function ensureError(error, fallbackMessage) {
+  if (error instanceof Error) {
+    return error;
+  }
+  if (typeof error === "string" && error.trim()) {
+    return new Error(error);
+  }
+  return new Error(fallbackMessage);
+}
+
 export function isSupabaseOAuthConfigured() {
   return Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 }
@@ -44,7 +71,7 @@ function getSupabaseClient() {
       auth: {
         flowType: "pkce",
         persistSession: true,
-        detectSessionInUrl: true,
+        detectSessionInUrl: false,
       },
     });
   }
@@ -53,6 +80,10 @@ function getSupabaseClient() {
 }
 
 export function buildOAuthRedirectUrl() {
+  const configuredRedirectUrl = normalizeRedirectUrl(SUPABASE_REDIRECT_URL);
+  if (configuredRedirectUrl) {
+    return configuredRedirectUrl;
+  }
   if (typeof window === "undefined") return "";
   return `${window.location.origin}${window.location.pathname}`;
 }
@@ -125,17 +156,32 @@ export async function resolveSupabaseSession() {
   }
 
   const supabase = getSupabaseClient();
-  const url = new URL(window.location.href);
-  const authCode = url.searchParams.get("code");
+  const authCode =
+    typeof window === "undefined"
+      ? null
+      : new URL(window.location.href).searchParams.get("code");
 
-  if (authCode) {
-    const { data, error } =
-      await supabase.auth.exchangeCodeForSession(authCode);
+  try {
+    const { data: sessionData, error: sessionError } =
+      await supabase.auth.getSession();
+    const existingSession = sessionData?.session || null;
+
+    if (existingSession) {
+      return { session: existingSession, error: null };
+    }
+
+    if (!authCode) {
+      return { session: null, error: sessionError || null };
+    }
+
+    const { data, error } = await supabase.auth.exchangeCodeForSession(authCode);
     return { session: data?.session || null, error: error || null };
+  } catch (error) {
+    return {
+      session: null,
+      error: ensureError(error, "Failed to resolve Google authentication."),
+    };
   }
-
-  const { data, error } = await supabase.auth.getSession();
-  return { session: data?.session || null, error: error || null };
 }
 
 export async function signOutSupabaseSession() {
