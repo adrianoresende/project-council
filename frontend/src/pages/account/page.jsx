@@ -86,6 +86,7 @@ export default function AccountAccessPage({
       await startGoogleOAuthSignIn();
     } catch (oauthError) {
       const oauthMessage = oauthError?.message || "";
+      console.log("OAUTH MESSAGE:", oauthMessage);
       if (
         oauthMessage.includes("VITE_SUPABASE_URL") ||
         oauthMessage.includes("VITE_SUPABASE_ANON_KEY")
