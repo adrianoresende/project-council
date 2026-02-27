@@ -78,6 +78,7 @@ async def stage1_collect_responses(
     user_query: str,
     conversation_history: List[Dict[str, str]] | None = None,
     session_id: str | None = None,
+    openrouter_user: str | None = None,
     user_attachments: List[Dict[str, Any]] | None = None,
     plugins: List[Dict[str, Any]] | None = None,
 ) -> List[Dict[str, Any]]:
@@ -127,6 +128,7 @@ async def stage1_collect_responses(
         session_id=session_id,
         metadata={"stage": "stage1"},
         plugins=plugins,
+        openrouter_user=openrouter_user,
     )
 
     stage1_results: List[Dict[str, Any]] = []

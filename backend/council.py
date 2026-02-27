@@ -18,6 +18,7 @@ async def run_full_council(
     user_query: str,
     conversation_history: List[Dict[str, str]] | None = None,
     session_id: str | None = None,
+    openrouter_user: str | None = None,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], Dict[str, Any], Dict[str, Any]]:
     """
     Run the complete 3-stage council process.
@@ -33,6 +34,7 @@ async def run_full_council(
         user_query,
         conversation_history=conversation_history,
         session_id=session_id,
+        openrouter_user=openrouter_user,
     )
 
     if not stage1_results:
@@ -51,6 +53,7 @@ async def run_full_council(
         stage1_results,
         conversation_history=conversation_history,
         session_id=session_id,
+        openrouter_user=openrouter_user,
     )
 
     aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
@@ -61,6 +64,7 @@ async def run_full_council(
         stage2_results,
         conversation_history=conversation_history,
         session_id=session_id,
+        openrouter_user=openrouter_user,
     )
 
     metadata = {

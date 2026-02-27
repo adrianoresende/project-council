@@ -9,6 +9,7 @@ from .shared import empty_usage_summary
 async def generate_conversation_title(
     user_query: str,
     session_id: str | None = None,
+    openrouter_user: str | None = None,
 ) -> Dict[str, Any]:
     """
     Generate a short title for a conversation based on the first user message.
@@ -34,6 +35,7 @@ Title:"""
         timeout=30.0,
         session_id=session_id,
         metadata={"stage": "title"},
+        openrouter_user=openrouter_user,
     )
 
     if response is None:
