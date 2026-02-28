@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 import unittest
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, Mock, call, patch
 
 from fastapi import HTTPException
 
@@ -66,6 +66,15 @@ class FreePlanQuotaEndpointTests(unittest.IsolatedAsyncioTestCase):
             "id": "user-free-1",
             "email": "free@example.com",
             "user_metadata": {"plan": "free"},
+            "app_metadata": {},
+        }
+
+    @staticmethod
+    def _pro_user():
+        return {
+            "id": "user-pro-1",
+            "email": "pro@example.com",
+            "user_metadata": {"plan": "pro"},
             "app_metadata": {},
         }
 
@@ -415,6 +424,199 @@ class FreePlanQuotaEndpointTests(unittest.IsolatedAsyncioTestCase):
                 pass
 
         consume_mock.assert_not_awaited()
+
+    async def test_send_message_routes_plan_specific_council_models_for_free_and_pro(self):
+        free_models = ["provider/free-model-a", "provider/free-model-b"]
+        pro_models = ["provider/pro-model-a", "provider/pro-model-b"]
+        stage1_mock = AsyncMock(
+            return_value=[
+                {
+                    "model": "provider/pro-model-a",
+                    "response": "stage1",
+                    "usage": main.empty_usage_summary(),
+                }
+            ]
+        )
+        stage2_mock = AsyncMock(return_value=([], {}))
+        stage3_mock = AsyncMock(
+            return_value={
+                "model": "provider/pro-model-a",
+                "response": "stage3",
+                "usage": main.empty_usage_summary(),
+            }
+        )
+
+        def resolve_models(plan: str):
+            return list(pro_models if plan == "pro" else free_models)
+
+        get_models_mock = Mock(side_effect=resolve_models)
+
+        with (
+            patch(
+                "backend.main.extract_message_content_and_files",
+                new=AsyncMock(return_value=("Hello", [])),
+            ),
+            patch(
+                "backend.main.get_owned_conversation",
+                new=AsyncMock(
+                    return_value={
+                        "id": "conv-1",
+                        "messages": [{"role": "user", "content": "Earlier"}],
+                    }
+                ),
+            ),
+            patch(
+                "backend.main._get_remaining_daily_tokens",
+                new=AsyncMock(return_value=1000),
+            ),
+            patch(
+                "backend.main._get_remaining_daily_queries",
+                new=AsyncMock(return_value=3),
+            ),
+            patch(
+                "backend.main.prepare_uploaded_files_for_model",
+                new=AsyncMock(return_value=([], [], False)),
+            ),
+            patch("backend.main.resolve_message_prompt", return_value="Hello"),
+            patch("backend.main.get_council_models_for_plan", new=get_models_mock),
+            patch("backend.main.storage.add_user_message", new=AsyncMock()),
+            patch("backend.main.storage.consume_account_tokens", new=AsyncMock(return_value=9)),
+            patch("backend.main.stage1_collect_responses", new=stage1_mock),
+            patch("backend.main.stage2_collect_rankings", new=stage2_mock),
+            patch("backend.main.stage3_synthesize_final", new=stage3_mock),
+            patch("backend.main.storage.add_assistant_message", new=AsyncMock()),
+            patch("backend.main.storage.get_conversation", new=AsyncMock(return_value={})),
+        ):
+            await main.send_message(
+                conversation_id="conv-1",
+                http_request=object(),
+                user_timezone="America/New_York",
+                user=self._free_user(),
+            )
+            await main.send_message(
+                conversation_id="conv-1",
+                http_request=object(),
+                user_timezone="America/New_York",
+                user=self._pro_user(),
+            )
+
+        self.assertEqual(get_models_mock.call_args_list, [call("free"), call("pro")])
+        self.assertEqual(
+            stage1_mock.await_args_list[0].kwargs.get("council_models"),
+            free_models,
+        )
+        self.assertEqual(
+            stage1_mock.await_args_list[1].kwargs.get("council_models"),
+            pro_models,
+        )
+        self.assertEqual(
+            stage2_mock.await_args_list[0].kwargs.get("council_models"),
+            free_models,
+        )
+        self.assertEqual(
+            stage2_mock.await_args_list[1].kwargs.get("council_models"),
+            pro_models,
+        )
+
+    async def test_send_message_stream_routes_plan_specific_council_models_for_free_and_pro(
+        self,
+    ):
+        free_models = ["provider/free-stream-a", "provider/free-stream-b"]
+        pro_models = ["provider/pro-stream-a", "provider/pro-stream-b"]
+        stage1_mock = AsyncMock(
+            return_value=[
+                {
+                    "model": "provider/pro-stream-a",
+                    "response": "stage1",
+                    "usage": main.empty_usage_summary(),
+                }
+            ]
+        )
+        stage2_mock = AsyncMock(return_value=([], {}))
+        stage3_mock = AsyncMock(
+            return_value={
+                "model": "provider/pro-stream-a",
+                "response": "stage3",
+                "usage": main.empty_usage_summary(),
+            }
+        )
+
+        def resolve_models(plan: str):
+            return list(pro_models if plan == "pro" else free_models)
+
+        get_models_mock = Mock(side_effect=resolve_models)
+
+        with (
+            patch(
+                "backend.main.extract_message_content_and_files",
+                new=AsyncMock(return_value=("Hello", [])),
+            ),
+            patch(
+                "backend.main.get_owned_conversation",
+                new=AsyncMock(
+                    return_value={
+                        "id": "conv-1",
+                        "messages": [{"role": "user", "content": "Earlier"}],
+                    }
+                ),
+            ),
+            patch(
+                "backend.main._get_remaining_daily_tokens",
+                new=AsyncMock(return_value=1000),
+            ),
+            patch(
+                "backend.main._get_remaining_daily_queries",
+                new=AsyncMock(return_value=3),
+            ),
+            patch(
+                "backend.main.prepare_uploaded_files_for_model",
+                new=AsyncMock(return_value=([], [], False)),
+            ),
+            patch("backend.main.resolve_message_prompt", return_value="Hello"),
+            patch("backend.main.get_council_models_for_plan", new=get_models_mock),
+            patch("backend.main.storage.add_user_message", new=AsyncMock()),
+            patch("backend.main.storage.consume_account_tokens", new=AsyncMock(return_value=9)),
+            patch("backend.main.stage1_collect_responses", new=stage1_mock),
+            patch("backend.main.stage2_collect_rankings", new=stage2_mock),
+            patch("backend.main.stage3_synthesize_final", new=stage3_mock),
+            patch("backend.main.storage.add_assistant_message", new=AsyncMock()),
+            patch("backend.main.storage.get_conversation", new=AsyncMock(return_value={})),
+        ):
+            free_response = await main.send_message_stream(
+                conversation_id="conv-1",
+                http_request=self._request_stub(),
+                user_timezone="America/New_York",
+                user=self._free_user(),
+            )
+            async for _ in free_response.body_iterator:
+                pass
+
+            pro_response = await main.send_message_stream(
+                conversation_id="conv-1",
+                http_request=self._request_stub(),
+                user_timezone="America/New_York",
+                user=self._pro_user(),
+            )
+            async for _ in pro_response.body_iterator:
+                pass
+
+        self.assertEqual(get_models_mock.call_args_list, [call("free"), call("pro")])
+        self.assertEqual(
+            stage1_mock.await_args_list[0].kwargs.get("council_models"),
+            free_models,
+        )
+        self.assertEqual(
+            stage1_mock.await_args_list[1].kwargs.get("council_models"),
+            pro_models,
+        )
+        self.assertEqual(
+            stage2_mock.await_args_list[0].kwargs.get("council_models"),
+            free_models,
+        )
+        self.assertEqual(
+            stage2_mock.await_args_list[1].kwargs.get("council_models"),
+            pro_models,
+        )
 
 
 if __name__ == "__main__":

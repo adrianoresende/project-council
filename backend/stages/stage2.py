@@ -76,6 +76,7 @@ async def stage2_collect_rankings(
     stage1_results: List[Dict[str, Any]],
     conversation_history: List[Dict[str, str]] | None = None,
     session_id: str | None = None,
+    council_models: List[str] | None = None,
     openrouter_user: str | None = None,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, str]]:
     """
@@ -143,8 +144,12 @@ Now provide your evaluation and ranking:"""
 
     messages = [{"role": "user", "content": ranking_prompt}]
 
+    resolved_council_models = (
+        list(COUNCIL_MODELS) if council_models is None else list(council_models)
+    )
+
     responses = await query_models_parallel(
-        COUNCIL_MODELS,
+        resolved_council_models,
         messages,
         session_id=session_id,
         metadata={"stage": "stage2"},
