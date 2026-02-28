@@ -144,12 +144,9 @@ Now provide your evaluation and ranking:"""
 
     messages = [{"role": "user", "content": ranking_prompt}]
 
-    resolved_council_models = (
-        list(COUNCIL_MODELS) if council_models is None else list(council_models)
-    )
-
+    selected_council_models = council_models if council_models else COUNCIL_MODELS
     responses = await query_models_parallel(
-        resolved_council_models,
+        selected_council_models,
         messages,
         session_id=session_id,
         metadata={"stage": "stage2"},
