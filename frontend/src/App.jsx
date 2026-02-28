@@ -287,39 +287,40 @@ function App() {
   useEffect(() => {
     const bootstrapSession = async () => {
       let token = api.getAccessToken();
-      const callbackError = readOAuthCallbackErrorFromUrl();
-      if (callbackError) {
-        setAuthEntryError(callbackError);
-      }
-
-      if (!token) {
-        const { session, error } = await resolveSupabaseSession();
-        if (error) {
-          setAuthEntryError(error.message || t('auth.googleAuthenticationFailed'));
-        } else if (session?.access_token) {
-          api.setAccessToken(session.access_token);
-          token = session.access_token;
-          setAuthEntryError('');
-        }
-      }
-
-      clearOAuthCallbackArtifactsFromUrl();
-
-      if (!token) {
-        setIsAuthLoading(false);
-        return;
-      }
 
       try {
-        const currentUser = await api.getCurrentUser();
-        setUser(currentUser);
-        setUserPlan(inferPlanFromUser(currentUser));
-        setUserRole(inferRoleFromUser(currentUser));
-        setAuthEntryError('');
-        await Promise.all([loadConversations(), loadCredits(), loadAccountSummary()]);
-      } catch {
-        handleUnauthorized();
+        const callbackError = readOAuthCallbackErrorFromUrl();
+        if (callbackError) {
+          setAuthEntryError(callbackError);
+        }
+
+        if (!token) {
+          const { session, error } = await resolveSupabaseSession();
+          if (error) {
+            setAuthEntryError(error.message || t('auth.googleAuthenticationFailed'));
+          } else if (session?.access_token) {
+            api.setAccessToken(session.access_token);
+            token = session.access_token;
+            setAuthEntryError('');
+          }
+        }
+
+        if (!token) {
+          return;
+        }
+
+        try {
+          const currentUser = await api.getCurrentUser();
+          setUser(currentUser);
+          setUserPlan(inferPlanFromUser(currentUser));
+          setUserRole(inferRoleFromUser(currentUser));
+          setAuthEntryError('');
+          await Promise.all([loadConversations(), loadCredits(), loadAccountSummary()]);
+        } catch {
+          handleUnauthorized();
+        }
       } finally {
+        clearOAuthCallbackArtifactsFromUrl();
         setIsAuthLoading(false);
       }
     };

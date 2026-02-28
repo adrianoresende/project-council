@@ -77,6 +77,7 @@ async def stage2_collect_rankings(
     conversation_history: List[Dict[str, str]] | None = None,
     session_id: str | None = None,
     council_models: List[str] | None = None,
+    openrouter_user: str | None = None,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, str]]:
     """
     Stage 2: each model ranks the anonymized responses.
@@ -149,6 +150,7 @@ Now provide your evaluation and ranking:"""
         messages,
         session_id=session_id,
         metadata={"stage": "stage2"},
+        openrouter_user=openrouter_user,
     )
 
     stage2_results: List[Dict[str, Any]] = []

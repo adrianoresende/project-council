@@ -48,6 +48,7 @@ from .config import (
     PRO_DAILY_TOKEN_CREDITS,
     FREE_DAILY_QUERY_LIMIT,
     COUNCIL_ENV,
+    get_council_models_for_plan,
     CORS_ALLOW_ORIGINS,
     get_council_models_for_plan,
 )
@@ -565,6 +566,22 @@ def _resolve_conversation_session_id(conversation: Dict[str, Any]) -> str:
     if conversation_id:
         return conversation_id
     return str(uuid.uuid4())
+
+
+def _resolve_openrouter_user_identifier(user: Dict[str, Any]) -> str | None:
+    """Resolve outbound OpenRouter user identifier (email first, id fallback)."""
+    email = user.get("email")
+    if isinstance(email, str):
+        normalized_email = email.strip().lower()
+        if normalized_email:
+            return normalized_email
+
+    user_id = user.get("id")
+    if isinstance(user_id, str):
+        normalized_user_id = user_id.strip()
+        if normalized_user_id:
+            return normalized_user_id
+    return None
 
 
 def _iso_datetime_from_unix(value: Any) -> str | None:
@@ -1164,6 +1181,7 @@ async def send_message(
     is_first_message = len(conversation["messages"]) == 0
     conversation_history = _build_conversation_history(conversation.get("messages", []))
     conversation_session_id = _resolve_conversation_session_id(conversation)
+    openrouter_user = _resolve_openrouter_user_identifier(user)
     plan = _get_user_plan(user)
     council_models = get_council_models_for_plan(plan)
     resolved_timezone = _resolve_user_timezone(user, user_timezone)
@@ -1204,6 +1222,7 @@ async def send_message(
         title_result = await generate_conversation_title(
             resolved_prompt,
             session_id=conversation_session_id,
+            openrouter_user=openrouter_user,
         )
         title = title_result.get("title", "New Conversation")
         title_usage = title_result.get("usage", empty_usage_summary())
@@ -1214,6 +1233,7 @@ async def send_message(
         resolved_prompt,
         conversation_history=conversation_history,
         session_id=conversation_session_id,
+        openrouter_user=openrouter_user,
         user_attachments=attachment_parts,
         plugins=PDF_TEXT_PLUGIN if needs_pdf_parser else None,
         council_models=council_models,
@@ -1243,6 +1263,7 @@ async def send_message(
         title_result = await generate_conversation_title(
             resolved_prompt,
             session_id=conversation_session_id,
+            openrouter_user=openrouter_user,
         )
         title = title_result.get("title", "New Conversation")
         title_usage = title_result.get("usage", empty_usage_summary())
@@ -1270,6 +1291,7 @@ async def send_message(
             conversation_history=conversation_history,
             session_id=conversation_session_id,
             council_models=council_models,
+            openrouter_user=openrouter_user,
         )
         aggregate_rankings = calculate_aggregate_rankings(
             stage2_results, label_to_model
@@ -1282,6 +1304,7 @@ async def send_message(
             stage2_results,
             conversation_history=conversation_history,
             session_id=conversation_session_id,
+            openrouter_user=openrouter_user,
             user_attachments=attachment_parts,
             plugins=PDF_TEXT_PLUGIN if needs_pdf_parser else None,
         )
@@ -1378,6 +1401,7 @@ async def send_message_stream(
     is_first_message = len(conversation["messages"]) == 0
     conversation_history = _build_conversation_history(conversation.get("messages", []))
     conversation_session_id = _resolve_conversation_session_id(conversation)
+    openrouter_user = _resolve_openrouter_user_identifier(user)
     plan = _get_user_plan(user)
     council_models = get_council_models_for_plan(plan)
     resolved_timezone = _resolve_user_timezone(user, user_timezone)
@@ -1571,6 +1595,7 @@ async def send_message_stream(
                     generate_conversation_title(
                         resolved_prompt,
                         session_id=conversation_session_id,
+                        openrouter_user=openrouter_user,
                     )
                 )
 
@@ -1581,6 +1606,7 @@ async def send_message_stream(
                 resolved_prompt,
                 conversation_history=conversation_history,
                 session_id=conversation_session_id,
+                openrouter_user=openrouter_user,
                 user_attachments=attachment_parts,
                 plugins=PDF_TEXT_PLUGIN if needs_pdf_parser else None,
                 council_models=council_models,
@@ -1613,6 +1639,7 @@ async def send_message_stream(
                 conversation_history=conversation_history,
                 session_id=conversation_session_id,
                 council_models=council_models,
+                openrouter_user=openrouter_user,
             )
             aggregate_rankings = calculate_aggregate_rankings(
                 stage2_results, label_to_model
@@ -1633,6 +1660,7 @@ async def send_message_stream(
                 stage2_results,
                 conversation_history=conversation_history,
                 session_id=conversation_session_id,
+                openrouter_user=openrouter_user,
                 user_attachments=attachment_parts,
                 plugins=PDF_TEXT_PLUGIN if needs_pdf_parser else None,
             )

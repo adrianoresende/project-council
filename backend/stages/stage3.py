@@ -13,6 +13,7 @@ async def stage3_synthesize_final(
     stage2_results: List[Dict[str, Any]],
     conversation_history: List[Dict[str, str]] | None = None,
     session_id: str | None = None,
+    openrouter_user: str | None = None,
     user_attachments: List[Dict[str, Any]] | None = None,
     plugins: List[Dict[str, Any]] | None = None,
 ) -> Dict[str, Any]:
@@ -81,6 +82,7 @@ Provide a clear, well-reasoned final answer that represents the council's collec
         session_id=session_id,
         metadata={"stage": "stage3"},
         plugins=plugins,
+        openrouter_user=openrouter_user,
     )
 
     if response is None:

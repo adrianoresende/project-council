@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 import unittest
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, Mock, call, patch
 
 from fastapi import HTTPException
 
