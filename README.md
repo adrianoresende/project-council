@@ -21,11 +21,13 @@ This project was 99% vibe coded as a fun Saturday hack because I wanted to explo
 The project uses [uv](https://docs.astral.sh/uv/) for project management.
 
 **Backend:**
+
 ```bash
 uv sync
 ```
 
 **Frontend:**
+
 ```bash
 cd frontend
 npm install
@@ -56,7 +58,6 @@ Configure Stripe webhooks to `POST /api/billing/webhook` so successful checkouts
 Create `frontend/.env.local`:
 
 ```bash
-VITE_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
 VITE_SUPABASE_ANON_KEY=eyJ...
 VITE_SUPABASE_REDIRECT_URL=http://localhost:5173/auth/callback
 ```
@@ -100,6 +101,7 @@ COUNCIL_ENV=development
 ```
 
 Supported values:
+
 - `development` / `dev` / `local` uses:
   - `openai/gpt-5-nano`
   - `google/gemini-2.5-flash-lite`
@@ -155,6 +157,7 @@ CORS_ALLOW_ORIGINS=https://app.example.com,https://www.example.com
 ## Running the Application
 
 **Option 1: Use the start script**
+
 ```bash
 ./start.sh
 ```
@@ -162,11 +165,13 @@ CORS_ALLOW_ORIGINS=https://app.example.com,https://www.example.com
 **Option 2: Run manually**
 
 Terminal 1 (Backend):
+
 ```bash
 uv run python -m backend.main
 ```
 
 Terminal 2 (Frontend):
+
 ```bash
 cd frontend
 npm run dev
@@ -204,7 +209,7 @@ Do not wrap values in quotes in Railway (`COUNCIL_ENV=production`, not `COUNCIL_
 4. Deploy and verify the backend responds on `/` with:
 
 ```json
-{"status":"ok","service":"LLM Council API"}
+{ "status": "ok", "service": "LLM Council API" }
 ```
 
 ### 2. Frontend web service (`frontend` root directory)
@@ -218,6 +223,7 @@ npm run preview -- --host 0.0.0.0 --port ${PORT:-4173}
 ```
 
 Why `npm install` instead of `npm ci`:
+
 - Railway can reuse filesystem layers where `node_modules/.vite` is still locked, which can make `npm ci` fail with `EBUSY: rmdir '/app/node_modules/.vite'`.
 - This build command keeps devDependencies available for `vite build` and avoids the `npm ci` cleanup step that triggers this lock error.
 
@@ -225,7 +231,6 @@ Why `npm install` instead of `npm ci`:
 
 ```bash
 VITE_API_BASE_URL=https://YOUR_BACKEND_DOMAIN.up.railway.app
-VITE_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
 VITE_SUPABASE_ANON_KEY=eyJ...
 VITE_SUPABASE_REDIRECT_URL=https://YOUR_FRONTEND_DOMAIN.up.railway.app/auth/callback
 VITE_PREVIEW_ALLOWED_HOSTS=front-end-production-4235.up.railway.app,another-frontend-domain.up.railway.app

@@ -61,6 +61,7 @@ async def query_model(
     session_id: str | None = None,
     metadata: Dict[str, str] | None = None,
     plugins: List[Dict[str, Any]] | None = None,
+    openrouter_user: str | None = None,
 ) -> Optional[Dict[str, Any]]:
     """
     Query a single model via OpenRouter API.
@@ -87,9 +88,16 @@ async def query_model(
         if isinstance(session_id, str) and session_id.strip()
         else None
     )
+    normalized_openrouter_user = (
+        openrouter_user.strip()
+        if isinstance(openrouter_user, str) and openrouter_user.strip()
+        else None
+    )
     if normalized_session_id:
         payload["session_id"] = normalized_session_id
         headers["X-Session-Id"] = normalized_session_id
+    if normalized_openrouter_user:
+        payload["user"] = normalized_openrouter_user
 
     if isinstance(metadata, dict) and metadata:
         metadata_payload = {
@@ -133,6 +141,7 @@ async def query_models_parallel(
     session_id: str | None = None,
     metadata: Dict[str, str] | None = None,
     plugins: List[Dict[str, Any]] | None = None,
+    openrouter_user: str | None = None,
 ) -> Dict[str, Optional[Dict[str, Any]]]:
     """
     Query multiple models in parallel.
@@ -152,6 +161,7 @@ async def query_models_parallel(
             session_id=session_id,
             metadata=metadata,
             plugins=plugins,
+            openrouter_user=openrouter_user,
         )
         for model in models
     ]

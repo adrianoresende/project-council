@@ -2,8 +2,8 @@
  * API client for the LLM Council backend.
  */
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001';
-const AUTH_STORAGE_KEY = 'llm-council-access-token';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8001";
+const AUTH_STORAGE_KEY = "llm-council-access-token";
 
 let accessToken = localStorage.getItem(AUTH_STORAGE_KEY);
 
@@ -15,8 +15,8 @@ function getAuthHeaders() {
 function getUserTimezoneHeader() {
   try {
     const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    if (typeof timezone === 'string' && timezone.trim()) {
-      return { 'X-User-Timezone': timezone.trim() };
+    if (typeof timezone === "string" && timezone.trim()) {
+      return { "X-User-Timezone": timezone.trim() };
     }
   } catch {
     // Ignore timezone detection errors and fallback to server default.
@@ -28,20 +28,24 @@ async function parseError(response, fallbackMessage) {
   try {
     const payload = await response.json();
     const detail = payload?.detail;
-    const detailIsObject = detail && typeof detail === 'object' && !Array.isArray(detail);
+    const detailIsObject =
+      detail && typeof detail === "object" && !Array.isArray(detail);
     if (detailIsObject) {
-      const structuredMessage = typeof detail.message === 'string' ? detail.message.trim() : '';
-      const payloadMessage = typeof payload?.message === 'string' ? payload.message.trim() : '';
+      const structuredMessage =
+        typeof detail.message === "string" ? detail.message.trim() : "";
+      const payloadMessage =
+        typeof payload?.message === "string" ? payload.message.trim() : "";
       return {
         message: structuredMessage || payloadMessage || fallbackMessage,
         payload: detail,
       };
     }
-    const detailMessage = typeof detail === 'string' ? detail.trim() : '';
-    const payloadMessage = typeof payload?.message === 'string' ? payload.message.trim() : '';
+    const detailMessage = typeof detail === "string" ? detail.trim() : "";
+    const payloadMessage =
+      typeof payload?.message === "string" ? payload.message.trim() : "";
     return {
       message: detailMessage || payloadMessage || fallbackMessage,
-      payload: payload && typeof payload === 'object' ? payload : null,
+      payload: payload && typeof payload === "object" ? payload : null,
     };
   } catch {
     return {
@@ -52,10 +56,15 @@ async function parseError(response, fallbackMessage) {
 }
 
 async function request(path, options = {}, requiresAuth = true) {
-  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
+  const isFormData =
+    typeof FormData !== "undefined" && options.body instanceof FormData;
   const headers = {
-    ...(!isFormData && options.body ? { 'Content-Type': 'application/json' } : {}),
-    ...(requiresAuth ? { ...getAuthHeaders(), ...getUserTimezoneHeader() } : {}),
+    ...(!isFormData && options.body
+      ? { "Content-Type": "application/json" }
+      : {}),
+    ...(requiresAuth
+      ? { ...getAuthHeaders(), ...getUserTimezoneHeader() }
+      : {}),
     ...(options.headers || {}),
   };
 
@@ -65,15 +74,17 @@ async function request(path, options = {}, requiresAuth = true) {
   });
 
   if (!response.ok) {
-    const { message, payload } = await parseError(response, 'Request failed');
+    const { message, payload } = await parseError(response, "Request failed");
     const error = new Error(message);
     error.status = response.status;
-    if (payload && typeof payload === 'object') {
+    if (payload && typeof payload === "object") {
       error.payload = payload;
-      if (typeof payload.code === 'string') error.code = payload.code;
-      if (typeof payload.action === 'string') error.action = payload.action;
-      if (typeof payload.reset_at === 'string') error.resetAt = payload.reset_at;
-      if (typeof payload.timezone === 'string') error.timezone = payload.timezone;
+      if (typeof payload.code === "string") error.code = payload.code;
+      if (typeof payload.action === "string") error.action = payload.action;
+      if (typeof payload.reset_at === "string")
+        error.resetAt = payload.reset_at;
+      if (typeof payload.timezone === "string")
+        error.timezone = payload.timezone;
     }
     throw error;
   }
@@ -83,13 +94,13 @@ async function request(path, options = {}, requiresAuth = true) {
 
 function buildMessageFormData(payload = {}) {
   const formData = new FormData();
-  const content = typeof payload.content === 'string' ? payload.content : '';
-  formData.append('content', content);
+  const content = typeof payload.content === "string" ? payload.content : "";
+  formData.append("content", content);
 
   const isBinaryFile = (value) => {
     if (!value) return false;
-    if (typeof File !== 'undefined' && value instanceof File) return true;
-    if (typeof Blob !== 'undefined' && value instanceof Blob) return true;
+    if (typeof File !== "undefined" && value instanceof File) return true;
+    if (typeof Blob !== "undefined" && value instanceof Blob) return true;
     return false;
   };
 
@@ -97,10 +108,11 @@ function buildMessageFormData(payload = {}) {
   files.forEach((file, index) => {
     if (isBinaryFile(file)) {
       const fallbackName = `upload-${index + 1}`;
-      const filename = typeof file.name === 'string' && file.name.trim()
-        ? file.name
-        : fallbackName;
-      formData.append('files', file, filename);
+      const filename =
+        typeof file.name === "string" && file.name.trim()
+          ? file.name
+          : fallbackName;
+      formData.append("files", file, filename);
     }
   });
 
@@ -127,41 +139,41 @@ export const api = {
 
   async register(email, password) {
     return request(
-      '/api/auth/register',
+      "/api/auth/register",
       {
-        method: 'POST',
+        method: "POST",
         body: JSON.stringify({ email, password }),
       },
-      false
+      false,
     );
   },
 
   async login(email, password) {
     return request(
-      '/api/auth/login',
+      "/api/auth/login",
       {
-        method: 'POST',
+        method: "POST",
         body: JSON.stringify({ email, password }),
       },
-      false
+      false,
     );
   },
 
   async getCurrentUser() {
-    const data = await request('/api/auth/me');
+    const data = await request("/api/auth/me");
     return data.user;
   },
 
   async getCredits() {
-    return request('/api/account/credits');
+    return request("/api/account/credits");
   },
 
   async getAccountSummary() {
-    return request('/api/account/summary');
+    return request("/api/account/summary");
   },
 
   async getAdminUsers() {
-    return request('/api/admin/users');
+    return request("/api/admin/users");
   },
 
   async getAdminUser(userId) {
@@ -170,22 +182,25 @@ export const api = {
 
   async updateAdminUserRole(userId, role) {
     return request(`/api/admin/users/${encodeURIComponent(userId)}/role`, {
-      method: 'PATCH',
+      method: "PATCH",
       body: JSON.stringify({ role }),
     });
   },
 
   async updateAdminUserPlan(userId, plan) {
     return request(`/api/admin/users/${encodeURIComponent(userId)}/plan`, {
-      method: 'PATCH',
+      method: "PATCH",
       body: JSON.stringify({ plan }),
     });
   },
 
   async resetAdminUserQuota(userId) {
-    return request(`/api/admin/users/${encodeURIComponent(userId)}/quota/reset`, {
-      method: 'POST',
-    });
+    return request(
+      `/api/admin/users/${encodeURIComponent(userId)}/quota/reset`,
+      {
+        method: "POST",
+      },
+    );
   },
 
   async getAccountPayments(limit = 20) {
@@ -193,8 +208,8 @@ export const api = {
   },
 
   async addCredits(amount) {
-    return request('/api/account/credits/add', {
-      method: 'POST',
+    return request("/api/account/credits/add", {
+      method: "POST",
       body: JSON.stringify({ amount }),
     });
   },
@@ -203,15 +218,15 @@ export const api = {
    * Get billing configuration and plans.
    */
   async getBillingConfig() {
-    return request('/api/billing/config');
+    return request("/api/billing/config");
   },
 
   /**
    * Create Stripe checkout session for Pro plan.
    */
   async createProCheckoutSession(successUrl, cancelUrl) {
-    return request('/api/billing/checkout/pro', {
-      method: 'POST',
+    return request("/api/billing/checkout/pro", {
+      method: "POST",
       body: JSON.stringify({
         success_url: successUrl,
         cancel_url: cancelUrl,
@@ -223,8 +238,8 @@ export const api = {
    * Confirm Stripe checkout session and sync account plan.
    */
   async confirmCheckoutSession(sessionId) {
-    return request('/api/billing/confirm', {
-      method: 'POST',
+    return request("/api/billing/confirm", {
+      method: "POST",
       body: JSON.stringify({ session_id: sessionId }),
     });
   },
@@ -233,15 +248,17 @@ export const api = {
    * List all conversations.
    */
   async listConversations(archived = false) {
-    return request(`/api/conversations?archived=${archived ? 'true' : 'false'}`);
+    return request(
+      `/api/conversations?archived=${archived ? "true" : "false"}`,
+    );
   },
 
   /**
    * Create a new conversation.
    */
   async createConversation() {
-    return request('/api/conversations', {
-      method: 'POST',
+    return request("/api/conversations", {
+      method: "POST",
       body: JSON.stringify({}),
     });
   },
@@ -258,7 +275,7 @@ export const api = {
    */
   async setConversationArchived(conversationId, archived = true) {
     return request(`/api/conversations/${conversationId}/archive`, {
-      method: 'PATCH',
+      method: "PATCH",
       body: JSON.stringify({ archived }),
     });
   },
@@ -268,11 +285,9 @@ export const api = {
    */
   async sendMessage(conversationId, payload) {
     return request(`/api/conversations/${conversationId}/message`, {
-      method: 'POST',
+      method: "POST",
       body: buildMessageFormData(
-        typeof payload === 'string'
-          ? { content: payload, files: [] }
-          : payload
+        typeof payload === "string" ? { content: payload, files: [] } : payload,
       ),
     });
   },
@@ -286,71 +301,75 @@ export const api = {
    */
   async sendMessageStream(conversationId, payload, onEvent, options = {}) {
     const { signal } = options;
-    const normalizedPayload = typeof payload === 'string'
-      ? { content: payload, files: [] }
-      : payload;
+    const normalizedPayload =
+      typeof payload === "string" ? { content: payload, files: [] } : payload;
 
     const response = await fetch(
       `${API_BASE}/api/conversations/${conversationId}/message/stream`,
       {
-        method: 'POST',
+        method: "POST",
         headers: {
           ...getAuthHeaders(),
           ...getUserTimezoneHeader(),
         },
         body: buildMessageFormData(normalizedPayload),
         signal,
-      }
+      },
     );
 
     if (!response.ok) {
-      const { message, payload } = await parseError(response, 'Failed to send message');
+      const { message, payload } = await parseError(
+        response,
+        "Failed to send message",
+      );
       const error = new Error(message);
       error.status = response.status;
-      if (payload && typeof payload === 'object') {
+      if (payload && typeof payload === "object") {
         error.payload = payload;
-        if (typeof payload.code === 'string') error.code = payload.code;
-        if (typeof payload.action === 'string') error.action = payload.action;
-        if (typeof payload.reset_at === 'string') error.resetAt = payload.reset_at;
-        if (typeof payload.timezone === 'string') error.timezone = payload.timezone;
+        if (typeof payload.code === "string") error.code = payload.code;
+        if (typeof payload.action === "string") error.action = payload.action;
+        if (typeof payload.reset_at === "string")
+          error.resetAt = payload.reset_at;
+        if (typeof payload.timezone === "string")
+          error.timezone = payload.timezone;
       }
       throw error;
     }
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
-    let buffer = '';
+    let buffer = "";
 
     const parseEventBlock = (eventBlock) => {
       if (!eventBlock) return;
 
       const dataLines = eventBlock
-        .split('\n')
-        .filter((line) => line.startsWith('data:'))
+        .split("\n")
+        .filter((line) => line.startsWith("data:"))
         .map((line) => line.slice(5).trimStart());
 
       if (dataLines.length === 0) return;
 
-      const data = dataLines.join('\n');
+      const data = dataLines.join("\n");
       try {
         const event = JSON.parse(data);
         onEvent(event.type, event);
       } catch (error) {
-        console.error('Failed to parse SSE event:', error);
+        console.error("Failed to parse SSE event:", error);
       }
     };
 
     while (true) {
       const { done, value } = await reader.read();
       buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
-      buffer = buffer.replace(/\r\n/g, '\n');
+      buffer = buffer.replace(/\r\n/g, "\n");
 
-      let separatorIndex = buffer.indexOf('\n\n');
+      let separatorIndex = buffer.indexOf("\n\n");
       while (separatorIndex !== -1) {
         const eventBlock = buffer.slice(0, separatorIndex).trim();
         parseEventBlock(eventBlock);
         buffer = buffer.slice(separatorIndex + 2);
-        separatorIndex = buffer.indexOf('\n\n');
+        separatorIndex = buffer.indexOf("\n\n");
       }
 
       if (done) break;
