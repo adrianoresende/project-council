@@ -80,6 +80,7 @@ async def stage1_collect_responses(
     session_id: str | None = None,
     user_attachments: List[Dict[str, Any]] | None = None,
     plugins: List[Dict[str, Any]] | None = None,
+    council_models: List[str] | None = None,
 ) -> List[Dict[str, Any]]:
     """
     Stage 1: collect individual responses from all council models.
@@ -121,8 +122,12 @@ async def stage1_collect_responses(
     else:
         messages.append({"role": "user", "content": stage1_user_text})
 
+    resolved_council_models = (
+        list(COUNCIL_MODELS) if council_models is None else list(council_models)
+    )
+
     responses = await query_models_parallel(
-        COUNCIL_MODELS,
+        resolved_council_models,
         messages,
         session_id=session_id,
         metadata={"stage": "stage1"},

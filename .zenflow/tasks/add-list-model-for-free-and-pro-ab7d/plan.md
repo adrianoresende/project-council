@@ -69,7 +69,8 @@ Implement model list resolution for FREE and PRO plans in production via environ
   - Run config-focused unit tests.
   - Confirm fallback behavior when env vars are missing/empty.
 
-### [ ] Step: Wire plan-specific model routing into council execution
+### [x] Step: Wire plan-specific model routing into council execution
+<!-- chat-id: 4f4a6d52-49a3-422b-8a1f-769aef8821d1 -->
 
 Apply resolved model lists based on authenticated user plan in message flows.
 - Update `backend/stages/stage1.py` and `backend/stages/stage2.py` to accept optional `council_models` parameters while keeping backward-compatible defaults.

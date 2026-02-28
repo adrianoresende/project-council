@@ -48,6 +48,7 @@ from .config import (
     PRO_DAILY_TOKEN_CREDITS,
     FREE_DAILY_QUERY_LIMIT,
     COUNCIL_ENV,
+    get_council_models_for_plan,
     CORS_ALLOW_ORIGINS,
 )
 from .files import (
@@ -1164,6 +1165,7 @@ async def send_message(
     conversation_history = _build_conversation_history(conversation.get("messages", []))
     conversation_session_id = _resolve_conversation_session_id(conversation)
     plan = _get_user_plan(user)
+    council_models = get_council_models_for_plan(plan)
     resolved_timezone = _resolve_user_timezone(user, user_timezone)
     remaining_balance_after = 0
 
@@ -1214,6 +1216,7 @@ async def send_message(
         session_id=conversation_session_id,
         user_attachments=attachment_parts,
         plugins=PDF_TEXT_PLUGIN if needs_pdf_parser else None,
+        council_models=council_models,
     )
 
     # Free plan: consume one query only after Stage 1 has at least one successful response.
@@ -1266,6 +1269,7 @@ async def send_message(
             stage1_results,
             conversation_history=conversation_history,
             session_id=conversation_session_id,
+            council_models=council_models,
         )
         aggregate_rankings = calculate_aggregate_rankings(
             stage2_results, label_to_model
@@ -1375,6 +1379,7 @@ async def send_message_stream(
     conversation_history = _build_conversation_history(conversation.get("messages", []))
     conversation_session_id = _resolve_conversation_session_id(conversation)
     plan = _get_user_plan(user)
+    council_models = get_council_models_for_plan(plan)
     resolved_timezone = _resolve_user_timezone(user, user_timezone)
     remaining_balance_after = 0
 
@@ -1578,6 +1583,7 @@ async def send_message_stream(
                 session_id=conversation_session_id,
                 user_attachments=attachment_parts,
                 plugins=PDF_TEXT_PLUGIN if needs_pdf_parser else None,
+                council_models=council_models,
             )
 
             # Free plan: consume one query only after Stage 1 has at least one successful response.
@@ -1606,6 +1612,7 @@ async def send_message_stream(
                 stage1_results,
                 conversation_history=conversation_history,
                 session_id=conversation_session_id,
+                council_models=council_models,
             )
             aggregate_rankings = calculate_aggregate_rankings(
                 stage2_results, label_to_model
