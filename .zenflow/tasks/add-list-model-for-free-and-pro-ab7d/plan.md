@@ -55,7 +55,8 @@ Save to `{@artifacts_path}/plan.md`. If the feature is trivial and doesn't warra
 
 ---
 
-### [ ] Step: Add plan-aware production model configuration
+### [x] Step: Add plan-aware production model configuration
+<!-- chat-id: f379727f-d9a9-4174-b53b-449853e8d957 -->
 
 Implement model list resolution for FREE and PRO plans in production via environment variables.
 - Update `backend/config.py` with parsed env-backed lists:
