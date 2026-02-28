@@ -20,7 +20,8 @@ If you are blocked and need user clarification, mark the current step with `[!]`
 
 ## Workflow Steps
 
-### [ ] Step: Technical Specification
+### [x] Step: Technical Specification
+<!-- chat-id: bc440dfc-686e-4f47-8e9f-4f88da1e7091 -->
 
 Assess the task's difficulty, as underestimating it leads to poor outcomes.
 - easy: Straightforward implementation, trivial bug fix or feature
@@ -54,16 +55,33 @@ Save to `{@artifacts_path}/plan.md`. If the feature is trivial and doesn't warra
 
 ---
 
-### [ ] Step: Implementation
+### [ ] Step: Add plan-aware production model configuration
 
-Implement the task according to the technical specification and general engineering best practices.
+Implement model list resolution for FREE and PRO plans in production via environment variables.
+- Update `backend/config.py` with parsed env-backed lists:
+  - `PRODUCTION_FREE_COUNCIL_MODELS`
+  - `PRODUCTION_PRO_COUNCIL_MODELS`
+- Add/adjust helper(s) to normalize comma-separated model lists (trim quotes/spaces, remove empty values, de-duplicate preserving order).
+- Preserve development behavior (`COUNCIL_ENV` in `development|dev|local`) and add safe production fallbacks.
+- Add/extend unit tests for config resolution logic.
+- Verification:
+  - Run config-focused unit tests.
+  - Confirm fallback behavior when env vars are missing/empty.
 
-1. Break the task into steps where possible.
-2. Implement the required changes in the codebase
-3. If relevant, write unit tests alongside each change.
-4. Run relevant tests and linters in the end of each step.
-5. Perform basic manual verification if applicable.
-6. After completion, write a report to `{@artifacts_path}/report.md` describing:
-   - What was implemented
-   - How the solution was tested
-   - The biggest issues or challenges encountered
+### [ ] Step: Wire plan-specific model routing into council execution
+
+Apply resolved model lists based on authenticated user plan in message flows.
+- Update `backend/stages/stage1.py` and `backend/stages/stage2.py` to accept optional `council_models` parameters while keeping backward-compatible defaults.
+- Update `backend/main.py` (`send_message` and `send_message_stream`) to resolve plan-specific model lists once per request and pass to Stage 1 and Stage 2.
+- Keep API contracts unchanged and ensure FREE/PRO quota behavior remains intact.
+- Add/extend endpoint tests to validate routing for FREE vs PRO requests.
+- Verification:
+  - Run affected backend tests (`test_free_plan_quota.py` plus any new routing tests).
+
+### [ ] Step: Update docs and perform end-to-end verification
+
+Document and validate new configuration paths.
+- Update `README.md` model configuration section with new production env variables and examples.
+- Include fallback and environment behavior notes (development vs production).
+- Run full relevant backend unit tests.
+- Perform manual verification using distinct FREE/PRO env model lists and confirm Stage 1/2 model sets differ by plan in production mode.
