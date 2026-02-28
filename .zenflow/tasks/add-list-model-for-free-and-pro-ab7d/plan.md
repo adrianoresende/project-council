@@ -80,7 +80,7 @@ Apply resolved model lists based on authenticated user plan in message flows.
 - Verification:
   - Run affected backend tests (`test_free_plan_quota.py` plus any new routing tests).
 
-### [ ] Step: Update docs and perform end-to-end verification
+### [x] Step: Update docs and perform end-to-end verification
 
 Document and validate new configuration paths.
 - Update `README.md` model configuration section with new production env variables and examples.

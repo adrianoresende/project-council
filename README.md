@@ -93,7 +93,7 @@ It also creates `account_credits`, `billing_payments`, and credit RPC functions 
 
 ### 4. Configure Models (Optional)
 
-Set `COUNCIL_ENV` in `.env` to choose the model set:
+Set `COUNCIL_ENV` in `.env` to choose runtime behavior:
 
 ```bash
 COUNCIL_ENV=development
@@ -102,15 +102,22 @@ COUNCIL_ENV=development
 Supported values:
 - `development` / `dev` / `local` uses:
   - `openai/gpt-5-nano`
-  - `x-ai/grok-4-fast`
   - `google/gemini-2.5-flash-lite`
   - `anthropic/claude-3-haiku`
   - `x-ai/grok-4.1-fast`
-- `production` (default) uses:
-  - `openai/gpt-5.1`
-  - `google/gemini-3-pro-preview`
-  - `anthropic/claude-sonnet-4.5`
-  - `x-ai/grok-4`
+- `production` (default) uses plan-specific model lists from env vars:
+
+```bash
+COUNCIL_ENV=production
+PRODUCTION_FREE_COUNCIL_MODELS=openai/gpt-5-nano,google/gemini-2.5-flash-lite
+PRODUCTION_PRO_COUNCIL_MODELS=openai/gpt-5.1,google/gemini-3-pro-preview,anthropic/claude-sonnet-4.5,x-ai/grok-4
+```
+
+Notes:
+- In `production`, FREE users use `PRODUCTION_FREE_COUNCIL_MODELS` and PRO users use `PRODUCTION_PRO_COUNCIL_MODELS`.
+- If either variable is missing or resolves to an empty list, that plan falls back to the default production list in `backend/config.py`.
+- Model list parsing trims spaces/quotes, removes empty entries, and de-duplicates while preserving order.
+- In `development` / `dev` / `local`, both plans always use `DEVELOPMENT_COUNCIL_MODELS` (production plan-specific vars are ignored).
 
 You can still force a specific chairman model with:
 
@@ -118,10 +125,10 @@ You can still force a specific chairman model with:
 CHAIRMAN_MODEL=openai/gpt-5.1
 ```
 
-Or edit `backend/config.py` directly:
+Or edit `backend/config.py` defaults directly:
 
 ```python
-COUNCIL_MODELS = [
+DEFAULT_PRODUCTION_COUNCIL_MODELS = [
     "openai/gpt-5.1",
     "google/gemini-3-pro-preview",
     "anthropic/claude-sonnet-4.5",
