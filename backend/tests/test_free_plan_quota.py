@@ -70,6 +70,15 @@ class FreePlanQuotaEndpointTests(unittest.IsolatedAsyncioTestCase):
         }
 
     @staticmethod
+    def _pro_user():
+        return {
+            "id": "user-pro-1",
+            "email": "pro@example.com",
+            "user_metadata": {"plan": "pro"},
+            "app_metadata": {},
+        }
+
+    @staticmethod
     def _request_stub():
         class RequestStub:
             async def is_disconnected(self):
@@ -415,6 +424,203 @@ class FreePlanQuotaEndpointTests(unittest.IsolatedAsyncioTestCase):
                 pass
 
         consume_mock.assert_not_awaited()
+
+    async def test_send_message_routes_free_plan_through_free_council_models(self):
+        selected_models = ["openai/gpt-oss-120b", "google/gemini-2.0-flash"]
+        stage1_mock = AsyncMock(
+            return_value=[
+                {
+                    "model": "openai/gpt-oss-120b",
+                    "response": "ok",
+                    "usage": main.empty_usage_summary(),
+                }
+            ]
+        )
+        stage2_mock = AsyncMock(return_value=([], {}))
+
+        with (
+            patch(
+                "backend.main.extract_message_content_and_files",
+                new=AsyncMock(return_value=("Continue", [])),
+            ),
+            patch(
+                "backend.main.get_owned_conversation",
+                new=AsyncMock(
+                    return_value={
+                        "id": "conv-1",
+                        "messages": [{"role": "user", "content": "Earlier message"}],
+                    }
+                ),
+            ),
+            patch("backend.main._get_remaining_daily_queries", new=AsyncMock(return_value=2)),
+            patch(
+                "backend.main.prepare_uploaded_files_for_model",
+                new=AsyncMock(return_value=([], [], False)),
+            ),
+            patch("backend.main.resolve_message_prompt", return_value="Continue"),
+            patch("backend.main.storage.add_user_message", new=AsyncMock()),
+            patch("backend.main.stage1_collect_responses", new=stage1_mock),
+            patch("backend.main.stage2_collect_rankings", new=stage2_mock),
+            patch(
+                "backend.main.stage3_synthesize_final",
+                new=AsyncMock(
+                    return_value={
+                        "model": "openai/gpt-oss-120b",
+                        "response": "final",
+                        "usage": main.empty_usage_summary(),
+                    }
+                ),
+            ),
+            patch("backend.main.storage.add_assistant_message", new=AsyncMock()),
+            patch("backend.main.storage.get_conversation", new=AsyncMock(return_value={})),
+            patch(
+                "backend.main.get_council_models_for_plan",
+                return_value=selected_models,
+            ) as resolve_models_mock,
+        ):
+            await main.send_message(
+                conversation_id="conv-1",
+                http_request=object(),
+                user_timezone="America/New_York",
+                user=self._free_user(),
+            )
+
+        resolve_models_mock.assert_called_once_with("free")
+        self.assertEqual(stage1_mock.await_args.kwargs.get("council_models"), selected_models)
+        self.assertEqual(stage2_mock.await_args.kwargs.get("council_models"), selected_models)
+
+    async def test_send_message_routes_pro_plan_through_pro_council_models(self):
+        selected_models = ["openai/gpt-5-nano", "google/gemini-2.5-flash-lite"]
+        stage1_mock = AsyncMock(
+            return_value=[
+                {
+                    "model": "openai/gpt-5-nano",
+                    "response": "ok",
+                    "usage": main.empty_usage_summary(),
+                }
+            ]
+        )
+        stage2_mock = AsyncMock(return_value=([], {}))
+        consume_mock = AsyncMock(return_value=199999)
+
+        with (
+            patch(
+                "backend.main.extract_message_content_and_files",
+                new=AsyncMock(return_value=("Continue", [])),
+            ),
+            patch(
+                "backend.main.get_owned_conversation",
+                new=AsyncMock(
+                    return_value={
+                        "id": "conv-1",
+                        "messages": [{"role": "user", "content": "Earlier message"}],
+                    }
+                ),
+            ),
+            patch("backend.main._get_remaining_daily_tokens", new=AsyncMock(return_value=200000)),
+            patch(
+                "backend.main.prepare_uploaded_files_for_model",
+                new=AsyncMock(return_value=([], [], False)),
+            ),
+            patch("backend.main.resolve_message_prompt", return_value="Continue"),
+            patch("backend.main.storage.add_user_message", new=AsyncMock()),
+            patch("backend.main.stage1_collect_responses", new=stage1_mock),
+            patch("backend.main.stage2_collect_rankings", new=stage2_mock),
+            patch(
+                "backend.main.stage3_synthesize_final",
+                new=AsyncMock(
+                    return_value={
+                        "model": "openai/gpt-5-nano",
+                        "response": "final",
+                        "usage": main.empty_usage_summary(),
+                    }
+                ),
+            ),
+            patch("backend.main.storage.consume_account_tokens", new=consume_mock),
+            patch("backend.main.storage.add_assistant_message", new=AsyncMock()),
+            patch("backend.main.storage.get_conversation", new=AsyncMock(return_value={})),
+            patch(
+                "backend.main.get_council_models_for_plan",
+                return_value=selected_models,
+            ) as resolve_models_mock,
+        ):
+            await main.send_message(
+                conversation_id="conv-1",
+                http_request=object(),
+                user_timezone="America/New_York",
+                user=self._pro_user(),
+            )
+
+        resolve_models_mock.assert_called_once_with("pro")
+        self.assertEqual(stage1_mock.await_args.kwargs.get("council_models"), selected_models)
+        self.assertEqual(stage2_mock.await_args.kwargs.get("council_models"), selected_models)
+        consume_mock.assert_awaited_once()
+
+    async def test_send_message_stream_routes_free_plan_through_free_council_models(self):
+        selected_models = ["openai/gpt-oss-120b", "google/gemini-2.0-flash"]
+        stage1_mock = AsyncMock(
+            return_value=[
+                {
+                    "model": "openai/gpt-oss-120b",
+                    "response": "ok",
+                    "usage": main.empty_usage_summary(),
+                }
+            ]
+        )
+        stage2_mock = AsyncMock(return_value=([], {}))
+
+        with (
+            patch(
+                "backend.main.extract_message_content_and_files",
+                new=AsyncMock(return_value=("Continue", [])),
+            ),
+            patch(
+                "backend.main.get_owned_conversation",
+                new=AsyncMock(
+                    return_value={
+                        "id": "conv-1",
+                        "messages": [{"role": "user", "content": "Earlier message"}],
+                    }
+                ),
+            ),
+            patch("backend.main._get_remaining_daily_queries", new=AsyncMock(return_value=2)),
+            patch(
+                "backend.main.prepare_uploaded_files_for_model",
+                new=AsyncMock(return_value=([], [], False)),
+            ),
+            patch("backend.main.resolve_message_prompt", return_value="Continue"),
+            patch("backend.main.storage.add_user_message", new=AsyncMock()),
+            patch("backend.main.stage1_collect_responses", new=stage1_mock),
+            patch("backend.main.stage2_collect_rankings", new=stage2_mock),
+            patch(
+                "backend.main.stage3_synthesize_final",
+                new=AsyncMock(
+                    return_value={
+                        "model": "openai/gpt-oss-120b",
+                        "response": "final",
+                        "usage": main.empty_usage_summary(),
+                    }
+                ),
+            ),
+            patch("backend.main.storage.add_assistant_message", new=AsyncMock()),
+            patch("backend.main.storage.get_conversation", new=AsyncMock(return_value={})),
+            patch(
+                "backend.main.get_council_models_for_plan",
+                return_value=selected_models,
+            ) as resolve_models_mock,
+        ):
+            response = await main.send_message_stream(
+                conversation_id="conv-1",
+                http_request=self._request_stub(),
+                user_timezone="America/New_York",
+                user=self._free_user(),
+            )
+            async for _ in response.body_iterator:
+                pass
+
+        resolve_models_mock.assert_called_once_with("free")
+        self.assertEqual(stage1_mock.await_args.kwargs.get("council_models"), selected_models)
+        self.assertEqual(stage2_mock.await_args.kwargs.get("council_models"), selected_models)
 
 
 if __name__ == "__main__":

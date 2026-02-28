@@ -65,6 +65,53 @@ def _parse_cors_origins(raw_origins: str | None) -> list[str]:
     return parsed_origins
 
 
+def resolve_council_env_prefix(environment: str) -> str:
+    """Map resolved runtime environment to env var prefix."""
+    if environment in DEVELOPMENT_ENV_NAMES:
+        return "DEVELOPMENT"
+    return "PRODUCTION"
+
+
+def _parse_council_models(
+    raw_models: str | None,
+    fallback_models: list[str],
+) -> list[str]:
+    """Parse a comma-separated model list with fallback."""
+    if not raw_models:
+        return list(fallback_models)
+
+    normalized_models_value = _strip_wrapping_quotes(raw_models)
+    if not normalized_models_value:
+        return list(fallback_models)
+
+    parsed_models: list[str] = []
+    seen_models: set[str] = set()
+    for model in normalized_models_value.split(","):
+        normalized_model = _strip_wrapping_quotes(model)
+        if not normalized_model:
+            continue
+        if normalized_model in seen_models:
+            continue
+        parsed_models.append(normalized_model)
+        seen_models.add(normalized_model)
+
+    if parsed_models:
+        return parsed_models
+    return list(fallback_models)
+
+
+def resolve_council_models_for_plan(
+    plan: str | None,
+    free_models: list[str],
+    pro_models: list[str],
+) -> list[str]:
+    """Resolve model list from normalized account plan text."""
+    normalized_plan = plan.strip().lower() if isinstance(plan, str) else "free"
+    if normalized_plan == "pro":
+        return list(pro_models)
+    return list(free_models)
+
+
 def resolve_cors_allow_origins(
     raw_origins: str | None,
     environment: str,
@@ -109,6 +156,25 @@ if COUNCIL_ENV in DEVELOPMENT_ENV_NAMES:
 else:
     COUNCIL_MODELS = PRODUCTION_COUNCIL_MODELS
     DEFAULT_CHAIRMAN_MODEL = "google/gemini-3-pro-preview"
+
+COUNCIL_ENV_PREFIX = resolve_council_env_prefix(COUNCIL_ENV)
+FREE_COUNCIL_MODELS = _parse_council_models(
+    os.getenv(f"{COUNCIL_ENV_PREFIX}_FREE_COUNCIL_MODELS"),
+    COUNCIL_MODELS,
+)
+PRO_COUNCIL_MODELS = _parse_council_models(
+    os.getenv(f"{COUNCIL_ENV_PREFIX}_PRO_COUNCIL_MODELS"),
+    COUNCIL_MODELS,
+)
+
+
+def get_council_models_for_plan(plan: str | None) -> list[str]:
+    """Return council models configured for account plan."""
+    return resolve_council_models_for_plan(
+        plan,
+        FREE_COUNCIL_MODELS,
+        PRO_COUNCIL_MODELS,
+    )
 
 # Chairman model - synthesizes final response
 CHAIRMAN_MODEL = os.getenv("CHAIRMAN_MODEL") or DEFAULT_CHAIRMAN_MODEL
