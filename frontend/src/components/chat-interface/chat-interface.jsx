@@ -102,15 +102,10 @@ function formatUsageSummary(usage, t, language) {
   if (!usage || typeof usage !== "object") return null;
 
   const totalTokens = Number(usage.total_tokens ?? 0);
-  const totalCost = Number(usage.total_cost ?? usage.cost ?? 0);
   const modelCalls = Number(usage.model_calls ?? 0);
   const parts = [
     t("common.usageTokens", { count: totalTokens.toLocaleString(language) }),
   ];
-
-  if (Number.isFinite(totalCost) && totalCost > 0) {
-    parts.push(`$${totalCost.toFixed(6)}`);
-  }
 
   if (Number.isFinite(modelCalls) && modelCalls > 0) {
     parts.push(

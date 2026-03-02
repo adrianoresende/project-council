@@ -7,16 +7,9 @@ function formatUsage(usage, t, language) {
   if (!usage || typeof usage !== "object") return null;
 
   const totalTokens = Number(usage.total_tokens ?? 0);
-  const cost = Number(usage.cost ?? usage.total_cost ?? 0);
-  const parts = [
-    t("common.usageTokens", { count: totalTokens.toLocaleString(language) }),
-  ];
-
-  if (Number.isFinite(cost) && cost > 0) {
-    parts.push(`$${cost.toFixed(6)}`);
-  }
-
-  return parts.join(" · ");
+  return t("common.usageTokens", {
+    count: totalTokens.toLocaleString(language),
+  });
 }
 
 function deAnonymizeText(text, labelToModel) {
