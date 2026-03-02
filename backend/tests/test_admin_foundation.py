@@ -1,7 +1,7 @@
 """Tests for admin role checks and admin foundation API contracts."""
 
 import unittest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, call, patch
 
 from fastapi import HTTPException
 
@@ -86,6 +86,26 @@ class AdminUsersContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(rows[1]["user_id"], "user-z")
         self.assertEqual(rows[1]["role"], "admin")
         self.assertEqual(rows[1]["stripe_customer_id"], "cus_123")
+
+    async def test_get_admin_system_models_returns_plan_specific_model_lists(self):
+        with patch(
+            "backend.main.get_council_models_for_plan",
+            side_effect=[
+                ["openai/gpt-5-nano", "google/gemini-2.5-flash-lite"],
+                ["openai/gpt-5.1", "anthropic/claude-sonnet-4.5"],
+            ],
+        ) as get_models_mock:
+            payload = await main.get_admin_system_models(_={"id": "admin-1"})
+
+        self.assertEqual(
+            payload["free_models"],
+            ["openai/gpt-5-nano", "google/gemini-2.5-flash-lite"],
+        )
+        self.assertEqual(
+            payload["pro_models"],
+            ["openai/gpt-5.1", "anthropic/claude-sonnet-4.5"],
+        )
+        get_models_mock.assert_has_calls([call("free"), call("pro")])
 
     async def test_get_admin_user_rejects_blank_user_id(self):
         with self.assertRaises(HTTPException) as raised:

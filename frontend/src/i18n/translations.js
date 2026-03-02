@@ -170,6 +170,14 @@ export const translations = {
       failedLoadUsers: "Failed to load users.",
       tabs: {
         users: "Users",
+        system: "System",
+      },
+      system: {
+        freeTitle: "Free plan models",
+        proTitle: "Pro plan models",
+        loading: "Loading system models...",
+        failedLoad: "Failed to load system models.",
+        noModels: "No models configured.",
       },
       openUserDrawer: "Open user details for {{email}}",
       columns: {
@@ -391,6 +399,14 @@ export const translations = {
       failedLoadUsers: "No se pudieron cargar los usuarios.",
       tabs: {
         users: "Usuarios",
+        system: "Sistema",
+      },
+      system: {
+        freeTitle: "Modelos del plan Gratis",
+        proTitle: "Modelos del plan Pro",
+        loading: "Cargando modelos del sistema...",
+        failedLoad: "No se pudieron cargar los modelos del sistema.",
+        noModels: "No hay modelos configurados.",
       },
       openUserDrawer: "Abrir detalles del usuario {{email}}",
       columns: {
@@ -611,6 +627,14 @@ export const translations = {
       failedLoadUsers: "Falha ao carregar usuários.",
       tabs: {
         users: "Usuários",
+        system: "Sistema",
+      },
+      system: {
+        freeTitle: "Modelos do plano Grátis",
+        proTitle: "Modelos do plano Pro",
+        loading: "Carregando modelos do sistema...",
+        failedLoad: "Falha ao carregar modelos do sistema.",
+        noModels: "Nenhum modelo configurado.",
       },
       openUserDrawer: "Abrir detalhes do usuário {{email}}",
       columns: {

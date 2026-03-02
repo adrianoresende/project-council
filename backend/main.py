@@ -174,6 +174,13 @@ class AdminUserQuotaResetResponse(BaseModel):
     credits: int
 
 
+class AdminSystemModelsResponse(BaseModel):
+    """Admin response payload with system model lists by plan."""
+
+    free_models: List[str]
+    pro_models: List[str]
+
+
 class BillingPaymentResponse(BaseModel):
     """A processed Stripe payment linked to an account."""
 
@@ -1018,6 +1025,15 @@ async def get_admin_users(_: Dict[str, Any] = Depends(get_current_admin_user)):
 
     rows.sort(key=lambda row: (row["email"].lower(), row["email"]))
     return rows
+
+
+@app.get("/api/admin/system/models", response_model=AdminSystemModelsResponse)
+async def get_admin_system_models(_: Dict[str, Any] = Depends(get_current_admin_user)):
+    """Return configured council model lists for FREE and PRO plans."""
+    return {
+        "free_models": get_council_models_for_plan("free"),
+        "pro_models": get_council_models_for_plan("pro"),
+    }
 
 
 @app.get("/api/admin/users/{user_id}", response_model=AdminUserResponse)
