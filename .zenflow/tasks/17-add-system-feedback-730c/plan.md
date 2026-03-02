@@ -20,7 +20,8 @@ If you are blocked and need user clarification, mark the current step with `[!]`
 
 ## Workflow Steps
 
-### [ ] Step: Technical Specification
+### [x] Step: Technical Specification
+<!-- chat-id: 082585cc-8dc3-4093-ac62-fef6c15d081a -->
 
 Assess the task's difficulty, as underestimating it leads to poor outcomes.
 - easy: Straightforward implementation, trivial bug fix or feature
@@ -54,16 +55,49 @@ Save to `{@artifacts_path}/plan.md`. If the feature is trivial and doesn't warra
 
 ---
 
-### [ ] Step: Implementation
+### [ ] Step: Backend feedback persistence and API contracts
 
-Implement the task according to the technical specification and general engineering best practices.
+Implement database and backend support for feedback submission and admin listing.
+- Update `backend/supabase_schema.sql` with `feedback_messages` table, indexes, and RLS policies.
+- Add storage-layer functions in `backend/storage.py` for creating feedback and listing feedback rows.
+- Add API models and routes in `backend/main.py`:
+  - `POST /api/feedback` for authenticated users.
+  - `GET /api/admin/feedback` for admins.
+- Add/extend backend tests in `backend/tests/test_admin_foundation.py` to cover:
+  - feedback submission validation and contract,
+  - admin feedback listing contract and authorization.
+- Verification:
+  - `uv run python -m unittest backend.tests.test_admin_foundation`
 
-1. Break the task into steps where possible.
-2. Implement the required changes in the codebase
-3. If relevant, write unit tests alongside each change.
-4. Run relevant tests and linters in the end of each step.
-5. Perform basic manual verification if applicable.
-6. After completion, write a report to `{@artifacts_path}/report.md` describing:
-   - What was implemented
-   - How the solution was tested
-   - The biggest issues or challenges encountered
+### [ ] Step: User feedback modal flow in sidebar menu
+
+Implement the end-user feedback UX from the sidebar dropdown through API submission.
+- Add `Send feedback` action to `frontend/src/components/sidebar/sidebar.jsx`.
+- Create modal component for feedback form/success/error states (including top-right `X`) and wire it into app/page shell.
+- Add API client method in `frontend/src/api.js` for feedback submission.
+- Add i18n keys in `frontend/src/i18n/translations.js` for new sidebar/modal copy.
+- Add frontend tests for modal behavior (submit success, submit error, close actions) in a new test file.
+- Verification:
+  - `cd frontend && npm run test -- src/components/feedback/feedback-modal.test.jsx`
+  - `cd frontend && npm run lint`
+
+### [ ] Step: Admin Feedback tab and table rendering
+
+Implement admin feedback visibility with required columns and states.
+- Extend `frontend/src/pages/admin/page.jsx` with a `Feedback` tab and tab-specific data loading.
+- Add API client method in `frontend/src/api.js` for admin feedback retrieval.
+- Render feedback table with columns: user (email), message, date sent.
+- Add loading, empty, and error states aligned with existing admin tab patterns.
+- Extend `frontend/src/pages/admin/page.test.jsx` to cover feedback tab fetch/render behavior.
+- Verification:
+  - `cd frontend && npm run test -- src/pages/admin/page.test.jsx`
+  - `cd frontend && npm run lint`
+
+### [ ] Step: End-to-end validation and implementation report
+
+Run targeted checks and produce the task report artifact.
+- Run backend and frontend targeted tests together after all changes.
+- Perform manual smoke checks:
+  - user modal open/close, success, error,
+  - admin feedback tab shows expected columns/data.
+- Document implementation details, executed tests, and main challenges in `{@artifacts_path}/report.md`.
