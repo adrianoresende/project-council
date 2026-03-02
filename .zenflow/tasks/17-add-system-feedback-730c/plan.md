@@ -70,7 +70,8 @@ Implement database and backend support for feedback submission and admin listing
 - Verification:
   - `uv run python -m unittest backend.tests.test_admin_foundation`
 
-### [ ] Step: User feedback modal flow in sidebar menu
+### [x] Step: User feedback modal flow in sidebar menu
+<!-- chat-id: c466d24a-7cd5-489e-b9f8-fe61aac6c33f -->
 
 Implement the end-user feedback UX from the sidebar dropdown through API submission.
 - Add `Send feedback` action to `frontend/src/components/sidebar/sidebar.jsx`.

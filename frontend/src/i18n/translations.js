@@ -61,6 +61,20 @@ export const translations = {
       queryLeftMany: "queries left",
       upgradeButton: "Upgrade",
       adminTab: "Admin",
+      sendFeedbackButton: "Send feedback",
+    },
+    feedback: {
+      title: "Send feedback",
+      description:
+        "Your feedback is very important to help us deliver the best possible experience.",
+      messageLabel: "Your message.",
+      messagePlaceholder: "Tell us what is working well or what we can improve.",
+      submitButton: "Send feedback",
+      submittingButton: "Sending...",
+      successTitle: "Thank you for your feedback!",
+      successDescription: "Your message has been sent successfully.",
+      errorTryAgain: "Could not send feedback. Please try again now or later.",
+      closeModal: "Close feedback modal",
     },
     chat: {
       continuePlaceholder:
@@ -287,6 +301,21 @@ export const translations = {
       queryLeftMany: "consultas restantes",
       upgradeButton: "Mejorar",
       adminTab: "Admin",
+      sendFeedbackButton: "Enviar comentarios",
+    },
+    feedback: {
+      title: "Enviar comentarios",
+      description:
+        "Tus comentarios son muy importantes para ayudarnos a ofrecer la mejor experiencia posible.",
+      messageLabel: "Tu mensaje.",
+      messagePlaceholder: "Cuéntanos qué funciona bien o qué podemos mejorar.",
+      submitButton: "Enviar comentarios",
+      submittingButton: "Enviando...",
+      successTitle: "Gracias por tus comentarios.",
+      successDescription: "Tu mensaje se envió correctamente.",
+      errorTryAgain:
+        "No pudimos enviar tus comentarios. Inténtalo de nuevo ahora o más tarde.",
+      closeModal: "Cerrar modal de comentarios",
     },
     chat: {
       continuePlaceholder:
@@ -520,6 +549,22 @@ export const translations = {
       queryLeftMany: "consultas restantes",
       upgradeButton: "Fazer upgrade",
       adminTab: "Admin",
+      sendFeedbackButton: "Enviar feedback",
+    },
+    feedback: {
+      title: "Enviar feedback",
+      description:
+        "Seu feedback é muito importante para nos ajudar a entregar a melhor experiência possível.",
+      messageLabel: "Sua mensagem.",
+      messagePlaceholder:
+        "Conte para nós o que está funcionando bem ou o que podemos melhorar.",
+      submitButton: "Enviar feedback",
+      submittingButton: "Enviando...",
+      successTitle: "Obrigado pelo seu feedback.",
+      successDescription: "Sua mensagem foi enviada com sucesso.",
+      errorTryAgain:
+        "Não foi possível enviar seu feedback. Tente novamente agora ou mais tarde.",
+      closeModal: "Fechar modal de feedback",
     },
     chat: {
       continuePlaceholder:

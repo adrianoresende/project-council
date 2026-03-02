@@ -34,6 +34,7 @@ export default function Sidebar({
   userEmail,
   userPlan,
   userRole,
+  onOpenFeedback,
   onLogout,
 }) {
   const { language, t } = useI18n();
@@ -191,6 +192,19 @@ export default function Sidebar({
               >
                 <IconUserCircle size={14} stroke={2} />
                 {t("sidebar.accountTab")}
+              </button>
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-100"
+                onClick={() => {
+                  if (typeof onOpenFeedback === "function") {
+                    onOpenFeedback();
+                  }
+                  setIsUserMenuOpen(false);
+                }}
+              >
+                <IconMessagePlus size={14} stroke={2} />
+                {t("sidebar.sendFeedbackButton")}
               </button>
               <button
                 type="button"
