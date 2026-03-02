@@ -65,6 +65,7 @@ export default function ChatPage({
           onCancelMessage={onCancelMessage}
           canCancelMessage={canCancelMessage}
           isLoading={isLoading}
+          userPlan={userPlan}
         />
       )}
     </div>

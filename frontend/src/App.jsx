@@ -510,10 +510,11 @@ function App() {
 
   const isConversationsLoading = pendingConversationLoads > 0;
 
-  const handleSendMessage = async (content, files = []) => {
+  const handleSendMessage = async (content, files = [], options = {}) => {
     if (!currentConversationId) return;
     const activeConversationId = currentConversationId;
     const normalizedFiles = Array.isArray(files) ? files : [];
+    const useWebSearch = Boolean(options?.useWebSearch);
     const safeFilesForUI = normalizeUploadedFilesForMessage(normalizedFiles);
     const abortController = new AbortController();
     streamAbortControllerRef.current = abortController;
@@ -652,7 +653,10 @@ function App() {
           default:
             console.log('Unknown event type:', eventType);
         }
-      }, { signal: abortController.signal });
+      }, {
+        signal: abortController.signal,
+        useWebSearch,
+      });
     } catch (error) {
       const isAbortError = error?.name === 'AbortError';
       if (isAbortError) {

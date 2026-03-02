@@ -24,6 +24,10 @@ function getUserTimezoneHeader() {
   return {};
 }
 
+function buildWebSearchHeader(enabled) {
+  return { "X-Web-Search": enabled ? "true" : "false" };
+}
+
 async function parseError(response, fallbackMessage) {
   try {
     const payload = await response.json();
@@ -287,9 +291,11 @@ export const api = {
   /**
    * Send a message in a conversation.
    */
-  async sendMessage(conversationId, payload) {
+  async sendMessage(conversationId, payload, options = {}) {
+    const { useWebSearch = false } = options;
     return request(`/api/conversations/${conversationId}/message`, {
       method: "POST",
+      headers: buildWebSearchHeader(useWebSearch),
       body: buildMessageFormData(
         typeof payload === "string" ? { content: payload, files: [] } : payload,
       ),
@@ -301,10 +307,11 @@ export const api = {
    * @param {string} conversationId - The conversation ID
    * @param {{content: string, files?: File[]}|string} payload - Message payload
    * @param {function} onEvent - Callback function for each event: (eventType, data) => void
+   * @param {{signal?: AbortSignal, useWebSearch?: boolean}} options - Request options
    * @returns {Promise<void>}
    */
   async sendMessageStream(conversationId, payload, onEvent, options = {}) {
-    const { signal } = options;
+    const { signal, useWebSearch = false } = options;
     const normalizedPayload =
       typeof payload === "string" ? { content: payload, files: [] } : payload;
 
@@ -315,6 +322,7 @@ export const api = {
         headers: {
           ...getAuthHeaders(),
           ...getUserTimezoneHeader(),
+          ...buildWebSearchHeader(useWebSearch),
         },
         body: buildMessageFormData(normalizedPayload),
         signal,

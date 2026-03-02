@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef } from "react";
 import {
+  IconCheck,
   IconFile,
   IconFileTypePdf,
   IconLoader2,
   IconPhoto,
   IconPlus,
+  IconSearch,
   IconSend2,
   IconUpload,
   IconX,
@@ -148,17 +150,26 @@ function isMessageProcessing(message) {
   );
 }
 
+function getWebSearchMaxResultsForPlan(plan) {
+  if (typeof plan === "string" && plan.trim().toLowerCase() === "pro") {
+    return 5;
+  }
+  return 2;
+}
+
 export default function ChatInterface({
   conversation,
   onSendMessage,
   onCancelMessage,
   canCancelMessage,
   isLoading,
+  userPlan = "free",
 }) {
   const { language, t } = useI18n();
   const [input, setInput] = useState("");
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [isFileMenuOpen, setIsFileMenuOpen] = useState(false);
+  const [isWebSearchEnabled, setIsWebSearchEnabled] = useState(false);
   const [fileValidationError, setFileValidationError] = useState("");
   const [isProcessDetailsSidebarOpen, setIsProcessDetailsSidebarOpen] =
     useState(false);
@@ -200,7 +211,9 @@ export default function ChatInterface({
       !isLoading &&
       conversation?.id
     ) {
-      onSendMessage(input, selectedFiles);
+      onSendMessage(input, selectedFiles, {
+        useWebSearch: isWebSearchEnabled,
+      });
       setInput("");
       setSelectedFiles([]);
       setFileValidationError("");
@@ -269,6 +282,7 @@ export default function ChatInterface({
     selectedFiles.length > 0
       ? t("chat.filesMessagePlaceholder")
       : inputPlaceholder;
+  const webSearchMaxResults = getWebSearchMaxResultsForPlan(userPlan);
   const contextPercent = Math.min(100, Math.max(10, selectedFiles.length * 10));
   const latestAssistantMessageIndex =
     getLatestAssistantMessageIndex(conversationMessages);
@@ -534,6 +548,41 @@ export default function ChatInterface({
                           {t("chat.uploadFileDescription")}
                         </span>
                       </span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`mt-1 flex w-full items-start gap-3 rounded-md px-3 py-2 text-left transition-colors cursor-pointer ${
+                        isWebSearchEnabled
+                          ? "bg-emerald-50 hover:bg-emerald-100"
+                          : "hover:bg-slate-50"
+                      }`}
+                      onClick={() =>
+                        setIsWebSearchEnabled((previous) => !previous)
+                      }
+                    >
+                      <span
+                        className={`mt-0.5 ${
+                          isWebSearchEnabled ? "text-emerald-600" : "text-slate-500"
+                        }`}
+                      >
+                        <IconSearch size={16} />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block text-sm font-semibold text-slate-800">
+                          {t("chat.webSearchAction")}
+                        </span>
+                        <span className="block text-xs text-slate-500">
+                          {t("chat.webSearchDescription", {
+                            count: webSearchMaxResults,
+                          })}
+                        </span>
+                      </span>
+                      {isWebSearchEnabled && (
+                        <span className="ml-auto mt-0.5 inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.3px] text-emerald-700">
+                          <IconCheck size={11} />
+                          {t("chat.webSearchEnabled")}
+                        </span>
+                      )}
                     </button>
                   </div>
                 )}

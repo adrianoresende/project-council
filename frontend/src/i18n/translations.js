@@ -82,6 +82,9 @@ export const translations = {
       openUploadMenu: "Open file menu",
       uploadFileAction: "Upload file",
       uploadFileDescription: "PDF, images, Word, Excel or PowerPoint",
+      webSearchAction: "Web search",
+      webSearchDescription: "Search the web in real time (max {{count}} results)",
+      webSearchEnabled: "Enabled",
       contextLabel: "Context",
       filesMessagePlaceholder: "Add a message about these files...",
       unsupportedFileTypeError:
@@ -306,6 +309,10 @@ export const translations = {
       openUploadMenu: "Abrir menú de archivos",
       uploadFileAction: "Subir archivo",
       uploadFileDescription: "PDF, imágenes, Word, Excel o PowerPoint",
+      webSearchAction: "Búsqueda web",
+      webSearchDescription:
+        "Busca información en la web en tiempo real (máx. {{count}} resultados)",
+      webSearchEnabled: "Activa",
       contextLabel: "Contexto",
       filesMessagePlaceholder: "Añade un mensaje sobre estos archivos...",
       unsupportedFileTypeError:
@@ -535,6 +542,10 @@ export const translations = {
       openUploadMenu: "Abrir menu de arquivos",
       uploadFileAction: "Enviar arquivo",
       uploadFileDescription: "PDF, imagens, Word, Excel ou PowerPoint",
+      webSearchAction: "Busca na web",
+      webSearchDescription:
+        "Busque na web em tempo real (máx. {{count}} resultados)",
+      webSearchEnabled: "Ativa",
       contextLabel: "Contexto",
       filesMessagePlaceholder: "Adicione uma mensagem sobre esses arquivos...",
       unsupportedFileTypeError:
