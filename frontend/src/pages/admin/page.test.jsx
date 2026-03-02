@@ -9,6 +9,7 @@ vi.mock('../../api', () => ({
   api: {
     getAdminUsers: vi.fn(),
     getAdminSystemModels: vi.fn(),
+    getAdminFeedback: vi.fn(),
     getAdminUser: vi.fn(),
     updateAdminUserPlan: vi.fn(),
     resetAdminUserQuota: vi.fn(),
@@ -23,6 +24,12 @@ const baseUser = {
   stripe_customer_id: 'cus_123',
   registration_date: '2026-02-20T10:00:00+00:00',
   last_login_date: '2026-02-20T11:00:00+00:00',
+};
+
+const baseFeedback = {
+  user_email: 'member@example.com',
+  message: 'A lot better after the latest update.',
+  date_sent: '2026-03-01T09:30:00+00:00',
 };
 
 function renderPage() {
@@ -42,6 +49,7 @@ describe('AdminPage drawer actions', () => {
       pro_models: ['openai/gpt-5.1', 'anthropic/claude-sonnet-4.5'],
       chairman_model: 'google/gemini-3-pro-preview',
     });
+    api.getAdminFeedback.mockResolvedValue([]);
     api.getAdminUser.mockResolvedValue(baseUser);
     api.updateAdminUserPlan.mockResolvedValue({
       ...baseUser,
@@ -157,5 +165,67 @@ describe('AdminPage drawer actions', () => {
     expect(await screen.findByText('reset failed')).toBeTruthy();
     expect(screen.getAllByText('alpha@example.com').length).toBeGreaterThan(0);
     expect(screen.getByText('User details')).toBeTruthy();
+  });
+
+  it('loads and renders feedback rows when switching to feedback tab', async () => {
+    const user = userEvent.setup();
+    api.getAdminFeedback.mockResolvedValueOnce([baseFeedback]);
+
+    renderPage();
+
+    await screen.findByRole('button', {
+      name: 'Open user details for alpha@example.com',
+    });
+    await user.click(screen.getByRole('button', { name: 'Feedback' }));
+
+    await waitFor(() => {
+      expect(api.getAdminFeedback).toHaveBeenCalledTimes(1);
+    });
+
+    const expectedDate = new Intl.DateTimeFormat(undefined, {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    }).format(new Date(baseFeedback.date_sent));
+
+    expect(await screen.findByText('User (email)')).toBeTruthy();
+    expect(screen.getByText('Message')).toBeTruthy();
+    expect(screen.getByText('Date sent')).toBeTruthy();
+    expect(screen.getByText(baseFeedback.user_email)).toBeTruthy();
+    expect(screen.getByText(baseFeedback.message)).toBeTruthy();
+    expect(screen.getByText(expectedDate)).toBeTruthy();
+  });
+
+  it('shows empty feedback state when there are no rows', async () => {
+    const user = userEvent.setup();
+    api.getAdminFeedback.mockResolvedValueOnce([]);
+
+    renderPage();
+
+    await screen.findByRole('button', {
+      name: 'Open user details for alpha@example.com',
+    });
+    await user.click(screen.getByRole('button', { name: 'Feedback' }));
+
+    await waitFor(() => {
+      expect(api.getAdminFeedback).toHaveBeenCalledTimes(1);
+    });
+    expect(await screen.findByText('No feedback messages yet.')).toBeTruthy();
+  });
+
+  it('shows feedback load error message when request fails', async () => {
+    const user = userEvent.setup();
+    api.getAdminFeedback.mockRejectedValueOnce(new Error('feedback unavailable'));
+
+    renderPage();
+
+    await screen.findByRole('button', {
+      name: 'Open user details for alpha@example.com',
+    });
+    await user.click(screen.getByRole('button', { name: 'Feedback' }));
+
+    await waitFor(() => {
+      expect(api.getAdminFeedback).toHaveBeenCalledTimes(1);
+    });
+    expect(await screen.findByText('feedback unavailable')).toBeTruthy();
   });
 });

@@ -83,7 +83,8 @@ Implement the end-user feedback UX from the sidebar dropdown through API submiss
   - `cd frontend && npm run test -- src/components/feedback/feedback-modal.test.jsx`
   - `cd frontend && npm run lint`
 
-### [ ] Step: Admin Feedback tab and table rendering
+### [x] Step: Admin Feedback tab and table rendering
+<!-- chat-id: 40b20bd5-f6a0-4246-bb87-94206f170892 -->
 
 Implement admin feedback visibility with required columns and states.
 - Extend `frontend/src/pages/admin/page.jsx` with a `Feedback` tab and tab-specific data loading.

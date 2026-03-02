@@ -188,6 +188,7 @@ export const translations = {
       tabs: {
         users: "Users",
         system: "System",
+        feedback: "Feedback",
       },
       system: {
         freeTitle: "Free plan models",
@@ -196,6 +197,11 @@ export const translations = {
         failedLoad: "Failed to load system models.",
         noModels: "No models configured.",
       },
+      feedback: {
+        loading: "Loading feedback...",
+        empty: "No feedback messages yet.",
+        failedLoad: "Failed to load feedback messages.",
+      },
       openUserDrawer: "Open user details for {{email}}",
       columns: {
         email: "Email",
@@ -203,6 +209,9 @@ export const translations = {
         stripeCustomerId: "Stripe Customer ID",
         registrationDate: "Registration date",
         lastLoginDate: "Last login date",
+        userEmail: "User (email)",
+        message: "Message",
+        dateSent: "Date sent",
       },
       drawer: {
         title: "User details",
@@ -436,6 +445,7 @@ export const translations = {
       tabs: {
         users: "Usuarios",
         system: "Sistema",
+        feedback: "Comentarios",
       },
       system: {
         freeTitle: "Modelos del plan Gratis",
@@ -444,6 +454,11 @@ export const translations = {
         failedLoad: "No se pudieron cargar los modelos del sistema.",
         noModels: "No hay modelos configurados.",
       },
+      feedback: {
+        loading: "Cargando comentarios...",
+        empty: "Aún no hay comentarios.",
+        failedLoad: "No se pudieron cargar los comentarios.",
+      },
       openUserDrawer: "Abrir detalles del usuario {{email}}",
       columns: {
         email: "Correo electrónico",
@@ -451,6 +466,9 @@ export const translations = {
         stripeCustomerId: "ID de cliente Stripe",
         registrationDate: "Fecha de registro",
         lastLoginDate: "Último acceso",
+        userEmail: "Usuario (correo)",
+        message: "Mensaje",
+        dateSent: "Fecha de envío",
       },
       drawer: {
         title: "Detalles del usuario",
@@ -684,6 +702,7 @@ export const translations = {
       tabs: {
         users: "Usuários",
         system: "Sistema",
+        feedback: "Feedback",
       },
       system: {
         freeTitle: "Modelos do plano Grátis",
@@ -692,6 +711,11 @@ export const translations = {
         failedLoad: "Falha ao carregar modelos do sistema.",
         noModels: "Nenhum modelo configurado.",
       },
+      feedback: {
+        loading: "Carregando feedback...",
+        empty: "Ainda não há feedbacks.",
+        failedLoad: "Falha ao carregar feedbacks.",
+      },
       openUserDrawer: "Abrir detalhes do usuário {{email}}",
       columns: {
         email: "E-mail",
@@ -699,6 +723,9 @@ export const translations = {
         stripeCustomerId: "ID do cliente Stripe",
         registrationDate: "Data de registro",
         lastLoginDate: "Data do último login",
+        userEmail: "Usuário (e-mail)",
+        message: "Mensagem",
+        dateSent: "Data de envio",
       },
       drawer: {
         title: "Detalhes do usuário",

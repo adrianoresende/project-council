@@ -191,6 +191,10 @@ export const api = {
     return request("/api/admin/system/models");
   },
 
+  async getAdminFeedback(limit = 200) {
+    return request(`/api/admin/feedback?limit=${encodeURIComponent(limit)}`);
+  },
+
   async getAdminUser(userId) {
     return request(`/api/admin/users/${encodeURIComponent(userId)}`);
   },
