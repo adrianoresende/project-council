@@ -55,7 +55,8 @@ Save to `{@artifacts_path}/plan.md`. If the feature is trivial and doesn't warra
 
 ---
 
-### [ ] Step: Backend feedback persistence and API contracts
+### [x] Step: Backend feedback persistence and API contracts
+<!-- chat-id: 4261f9a3-b369-441d-a00f-45afd43d559a -->
 
 Implement database and backend support for feedback submission and admin listing.
 - Update `backend/supabase_schema.sql` with `feedback_messages` table, indexes, and RLS policies.
