@@ -67,4 +67,20 @@ describe("ChatInterface web search toggle", () => {
       { useWebSearch: true },
     );
   });
+
+  it("shows a green web icon next to the plus button when enabled", async () => {
+    const user = userEvent.setup();
+    renderChatInterface({ userPlan: "pro" });
+
+    expect(screen.queryByRole("status")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Open file menu" }));
+    await user.click(screen.getByRole("button", { name: /Web search/i }));
+
+    const webSearchIndicator = screen.getByRole("status", {
+      name: /Web search/i,
+    });
+    expect(webSearchIndicator).toBeTruthy();
+    expect(webSearchIndicator.className).toContain("text-emerald-600");
+  });
 });

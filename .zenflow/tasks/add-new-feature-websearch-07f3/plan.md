@@ -76,7 +76,8 @@ Implement the task according to the technical specification and general engineer
 Change "Search the web in real time (max 2 results)" to "Turn on search for the latest content or data"
 Avoid the max result on copy.
 
-### [ ] Step: Add UI "web"
+### [x] Step: Add UI "web"
+<!-- chat-id: 840fd5a0-62b0-4348-8f75-6ecb84bf7523 -->
 
 Add a web icon to the right of the "+" button when search is enabled.
 The icon must be green.

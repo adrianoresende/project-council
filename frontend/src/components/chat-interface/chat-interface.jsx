@@ -9,6 +9,7 @@ import {
   IconSearch,
   IconSend2,
   IconUpload,
+  IconWorld,
   IconX,
 } from "@tabler/icons-react";
 import ReactMarkdown from "react-markdown";
@@ -519,7 +520,7 @@ export default function ChatInterface({
             />
 
             <div className="pt-2 flex items-center justify-between">
-              <div ref={fileMenuRef} className="relative">
+              <div ref={fileMenuRef} className="relative flex items-center gap-2">
                 <button
                   type="button"
                   className="inline-flex p-2 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-600 transition-colors hover:border-slate-400 hover:bg-slate-100 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
@@ -529,6 +530,17 @@ export default function ChatInterface({
                 >
                   <IconPlus size={16} />
                 </button>
+
+                {isWebSearchEnabled && (
+                  <span
+                    role="status"
+                    aria-label={t("chat.webSearchAction")}
+                    className="inline-flex p-2 items-center justify-center rounded-full border border-emerald-300 bg-emerald-50 text-emerald-600"
+                    title={t("chat.webSearchAction")}
+                  >
+                    <IconWorld size={16} />
+                  </span>
+                )}
 
                 {isFileMenuOpen && !composerDisabled && (
                   <div className="absolute bottom-10 left-0 z-20 w-[300px] rounded-lg border border-slate-200 bg-white p-2 shadow-lg/10 shadow-slate-400">
