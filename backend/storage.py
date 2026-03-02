@@ -926,3 +926,67 @@ async def list_billing_payments(user_id: str, limit: int = 50) -> List[Dict[str,
     if not isinstance(rows, list):
         return []
     return rows
+
+
+def _build_feedback_row(row: Any) -> Dict[str, Any]:
+    """Normalize feedback row data into a stable API payload."""
+    if not isinstance(row, dict):
+        raise RuntimeError("Unexpected feedback row returned by database.")
+
+    user_email = row.get("user_email")
+    if not isinstance(user_email, str):
+        user_email = ""
+
+    message = row.get("message")
+    if not isinstance(message, str):
+        message = ""
+
+    created_at = row.get("created_at")
+    if not isinstance(created_at, str):
+        created_at = ""
+
+    return {
+        "user_email": user_email.strip(),
+        "message": message,
+        "date_sent": created_at.strip(),
+    }
+
+
+async def create_feedback_message(
+    user_id: str,
+    user_email: str,
+    message: str,
+) -> Dict[str, Any]:
+    """Persist a user feedback message and return normalized payload."""
+    rows = await _rest_request(
+        "POST",
+        "feedback_messages",
+        json_body={
+            "user_id": user_id,
+            "user_email": user_email,
+            "message": message,
+        },
+        prefer="return=representation",
+    )
+
+    if not isinstance(rows, list) or not rows:
+        raise RuntimeError("Feedback message was not persisted.")
+    return _build_feedback_row(rows[0])
+
+
+async def list_feedback_messages(limit: int = 200) -> List[Dict[str, Any]]:
+    """Return recent feedback messages for admin management views."""
+    safe_limit = min(max(limit, 1), 500)
+    rows = await _rest_request(
+        "GET",
+        "feedback_messages",
+        params={
+            "select": "user_email,message,created_at",
+            "order": "created_at.desc,id.desc",
+            "limit": str(safe_limit),
+        },
+    )
+
+    if not isinstance(rows, list):
+        return []
+    return [_build_feedback_row(row) for row in rows]

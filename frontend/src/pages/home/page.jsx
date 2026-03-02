@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import Sidebar from '../../components/sidebar/sidebar';
 import ChatInterface from '../../components/chat-interface/chat-interface';
+import FeedbackModal from '../../components/feedback/feedback-modal';
 import PricingPage from '../pricing/page';
 import AccountPage from '../account/account-page';
 import AdminPage from '../admin/page';
@@ -29,6 +31,8 @@ export default function ChatPage({
   canCancelMessage,
   isLoading,
 }) {
+  const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
+
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-white font-sans text-slate-800">
       <Sidebar
@@ -49,6 +53,7 @@ export default function ChatPage({
         userEmail={userEmail}
         userPlan={userPlan}
         userRole={userRole}
+        onOpenFeedback={() => setIsFeedbackModalOpen(true)}
         onLogout={onLogout}
       />
       {mainView === 'pricing' ? (
@@ -67,6 +72,10 @@ export default function ChatPage({
           userPlan={userPlan}
         />
       )}
+      <FeedbackModal
+        isOpen={isFeedbackModalOpen}
+        onClose={() => setIsFeedbackModalOpen(false)}
+      />
     </div>
   );
 }

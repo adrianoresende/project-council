@@ -176,12 +176,23 @@ export const api = {
     return request("/api/account/summary");
   },
 
+  async sendFeedback(message) {
+    return request("/api/feedback", {
+      method: "POST",
+      body: JSON.stringify({ message }),
+    });
+  },
+
   async getAdminUsers() {
     return request("/api/admin/users");
   },
 
   async getAdminSystemModels() {
     return request("/api/admin/system/models");
+  },
+
+  async getAdminFeedback(limit = 200) {
+    return request(`/api/admin/feedback?limit=${encodeURIComponent(limit)}`);
   },
 
   async getAdminUser(userId) {
