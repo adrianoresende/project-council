@@ -42,3 +42,34 @@ Evidence collected:
 - Quoted/comma-separated env values and duplicates (already handled by existing parsing helpers).
 - Empty env values should still have deterministic fallback behavior.
 - Any change to model resolver affects both normal and streaming message endpoints; both should be covered in tests.
+
+## Implementation notes
+Implemented in `backend/config.py`:
+
+1. Removed duplicate configuration blocks and duplicate `get_council_models_for_plan` definition so there is one canonical resolver.
+2. Added explicit env parsing constants:
+   - `RAW_PRODUCTION_FREE_COUNCIL_MODELS`
+   - `RAW_PRODUCTION_PRO_COUNCIL_MODELS`
+   - `EXPLICIT_PRODUCTION_FREE_COUNCIL_MODELS`
+   - `EXPLICIT_PRODUCTION_PRO_COUNCIL_MODELS`
+3. Added `_resolve_explicit_production_models_for_plan(plan)` and updated `get_council_models_for_plan(plan, environment=None)` to:
+   - Honor explicit `PRODUCTION_*_COUNCIL_MODELS` values first.
+   - Fall back to development defaults when no explicit plan env list exists and environment is development.
+   - Fall back to resolved production lists otherwise.
+4. Updated `resolve_council_models_for_plan` to normalize quoted plan strings before comparison.
+
+Regression coverage in `backend/tests/test_model_config.py`:
+
+- Hardened development fallback test by patching env explicitly to empty `PRODUCTION_*` vars.
+- Added `test_get_council_models_for_plan_honors_explicit_production_pro_models_in_dev` to lock the bug scenario:
+  - `COUNCIL_ENV=development`
+  - `PRODUCTION_PRO_COUNCIL_MODELS=openai/gpt-5-nano,google/gemini-2.5-flash-lite`
+  - Expected PRO plan models exactly match env list (no `claude-3-haiku`).
+
+## Test results
+- `uv run python -m unittest backend.tests.test_model_config backend.tests.test_cors_config`
+  - Result: `Ran 23 tests ... OK`
+
+Runtime verification:
+- `uv run python - <<'PY' ...` with current `.env` (`COUNCIL_ENV=development`) now returns:
+  - `get_council_models_for_plan("pro") == ['openai/gpt-5-nano', 'google/gemini-2.5-flash-lite']`

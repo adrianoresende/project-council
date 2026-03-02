@@ -51,8 +51,43 @@ class ModelConfigTests(unittest.TestCase):
         self.assertEqual(pro_models, ["model-pro-a", "model-pro-b"])
 
     def test_get_council_models_for_plan_uses_development_models_for_dev_env(self):
-        models = config.get_council_models_for_plan("pro", environment='"development"')
-        self.assertEqual(models, config.DEVELOPMENT_COUNCIL_MODELS)
+        with patch.dict(
+            os.environ,
+            {
+                "COUNCIL_ENV": "development",
+                "PRODUCTION_FREE_COUNCIL_MODELS": "",
+                "PRODUCTION_PRO_COUNCIL_MODELS": "",
+            },
+            clear=False,
+        ):
+            importlib.reload(config)
+            try:
+                models = config.get_council_models_for_plan(
+                    "pro", environment='"development"'
+                )
+                self.assertEqual(models, config.DEVELOPMENT_COUNCIL_MODELS)
+            finally:
+                importlib.reload(config)
+
+    def test_get_council_models_for_plan_honors_explicit_production_pro_models_in_dev(self):
+        with patch.dict(
+            os.environ,
+            {
+                "COUNCIL_ENV": "development",
+                "PRODUCTION_PRO_COUNCIL_MODELS": (
+                    "openai/gpt-5-nano,google/gemini-2.5-flash-lite"
+                ),
+            },
+            clear=False,
+        ):
+            importlib.reload(config)
+            try:
+                self.assertEqual(
+                    config.get_council_models_for_plan("pro"),
+                    ["openai/gpt-5-nano", "google/gemini-2.5-flash-lite"],
+                )
+            finally:
+                importlib.reload(config)
 
     def test_get_council_models_for_plan_uses_env_backed_production_lists(self):
         with patch.dict(

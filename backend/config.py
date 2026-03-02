@@ -106,7 +106,9 @@ def resolve_council_models_for_plan(
     pro_models: list[str],
 ) -> list[str]:
     """Resolve model list from normalized account plan text."""
-    normalized_plan = plan.strip().lower() if isinstance(plan, str) else "free"
+    normalized_plan = (
+        _strip_wrapping_quotes(plan).lower() if isinstance(plan, str) else "free"
+    )
     if normalized_plan == "pro":
         return list(pro_models)
     return list(free_models)
@@ -175,46 +177,6 @@ COUNCIL_ENV = resolve_council_env(
     os.getenv("APP_ENV"),
     os.getenv("ENVIRONMENT"),
 )
-DEVELOPMENT_ENV_NAMES = {"development", "dev", "local"}
-
-
-def _parse_cors_origins(raw_origins: str | None) -> list[str]:
-    """Parse a comma-separated list of CORS origins."""
-    if not raw_origins:
-        return []
-
-    parsed_origins: list[str] = []
-    seen_origins: set[str] = set()
-    for origin in raw_origins.split(","):
-        normalized_origin = origin.strip().rstrip("/")
-        if not normalized_origin:
-            continue
-        if normalized_origin == "*":
-            raise ValueError(
-                "CORS_ALLOW_ORIGINS does not support '*' when credentials are enabled."
-            )
-        if normalized_origin not in seen_origins:
-            parsed_origins.append(normalized_origin)
-            seen_origins.add(normalized_origin)
-    return parsed_origins
-
-
-def resolve_cors_allow_origins(
-    raw_origins: str | None,
-    environment: str,
-) -> list[str]:
-    """
-    Resolve CORS origins using env overrides and environment-aware defaults.
-
-    Development defaults to localhost origins for convenience.
-    Production defaults to no cross-origin access unless explicitly configured.
-    """
-    parsed_origins = _parse_cors_origins(raw_origins)
-    if parsed_origins:
-        return parsed_origins
-    if environment in DEVELOPMENT_ENV_NAMES:
-        return ["http://localhost:5173", "http://localhost:3000"]
-    return []
 
 DEVELOPMENT_COUNCIL_MODELS = [
     "openai/gpt-5-nano",
@@ -229,13 +191,43 @@ DEFAULT_PRODUCTION_COUNCIL_MODELS = [
     "x-ai/grok-4",
 ]
 
+RAW_PRODUCTION_FREE_COUNCIL_MODELS = os.getenv("PRODUCTION_FREE_COUNCIL_MODELS")
+RAW_PRODUCTION_PRO_COUNCIL_MODELS = os.getenv("PRODUCTION_PRO_COUNCIL_MODELS")
+
+EXPLICIT_PRODUCTION_FREE_COUNCIL_MODELS = _parse_council_model_list(
+    RAW_PRODUCTION_FREE_COUNCIL_MODELS
+)
+EXPLICIT_PRODUCTION_PRO_COUNCIL_MODELS = _parse_council_model_list(
+    RAW_PRODUCTION_PRO_COUNCIL_MODELS
+)
+
 PRODUCTION_FREE_COUNCIL_MODELS, PRODUCTION_PRO_COUNCIL_MODELS = (
     resolve_production_council_models(
-        os.getenv("PRODUCTION_FREE_COUNCIL_MODELS"),
-        os.getenv("PRODUCTION_PRO_COUNCIL_MODELS"),
+        RAW_PRODUCTION_FREE_COUNCIL_MODELS,
+        RAW_PRODUCTION_PRO_COUNCIL_MODELS,
         DEFAULT_PRODUCTION_COUNCIL_MODELS,
     )
 )
+
+
+def _resolve_explicit_production_models_for_plan(
+    plan: str | None,
+) -> list[str] | None:
+    """
+    Return explicitly configured production models for a plan.
+
+    This allows plan-specific env vars to override development defaults when set.
+    """
+    normalized_plan = (
+        _strip_wrapping_quotes(plan).lower() if isinstance(plan, str) else "free"
+    )
+    if normalized_plan == "pro":
+        if EXPLICIT_PRODUCTION_PRO_COUNCIL_MODELS:
+            return list(EXPLICIT_PRODUCTION_PRO_COUNCIL_MODELS)
+        return None
+    if EXPLICIT_PRODUCTION_FREE_COUNCIL_MODELS:
+        return list(EXPLICIT_PRODUCTION_FREE_COUNCIL_MODELS)
+    return None
 
 
 def get_council_models_for_plan(
@@ -243,6 +235,10 @@ def get_council_models_for_plan(
     environment: str | None = None,
 ) -> list[str]:
     """Resolve council models for a user plan in the given environment."""
+    explicit_models = _resolve_explicit_production_models_for_plan(plan)
+    if explicit_models:
+        return explicit_models
+
     resolved_environment = (
         COUNCIL_ENV
         if environment is None
@@ -250,13 +246,11 @@ def get_council_models_for_plan(
     )
     if resolved_environment in DEVELOPMENT_ENV_NAMES:
         return list(DEVELOPMENT_COUNCIL_MODELS)
-
-    normalized_plan = (
-        _strip_wrapping_quotes(plan).lower() if isinstance(plan, str) else "free"
+    return resolve_council_models_for_plan(
+        plan,
+        PRODUCTION_FREE_COUNCIL_MODELS,
+        PRODUCTION_PRO_COUNCIL_MODELS,
     )
-    if normalized_plan == "pro":
-        return list(PRODUCTION_PRO_COUNCIL_MODELS)
-    return list(PRODUCTION_FREE_COUNCIL_MODELS)
 
 
 # Backward-compatible alias for existing imports.
@@ -268,25 +262,6 @@ if COUNCIL_ENV in DEVELOPMENT_ENV_NAMES:
 else:
     COUNCIL_MODELS = list(PRODUCTION_COUNCIL_MODELS)
     DEFAULT_CHAIRMAN_MODEL = "google/gemini-3-pro-preview"
-
-COUNCIL_ENV_PREFIX = resolve_council_env_prefix(COUNCIL_ENV)
-FREE_COUNCIL_MODELS = _parse_council_models(
-    os.getenv(f"{COUNCIL_ENV_PREFIX}_FREE_COUNCIL_MODELS"),
-    COUNCIL_MODELS,
-)
-PRO_COUNCIL_MODELS = _parse_council_models(
-    os.getenv(f"{COUNCIL_ENV_PREFIX}_PRO_COUNCIL_MODELS"),
-    COUNCIL_MODELS,
-)
-
-
-def get_council_models_for_plan(plan: str | None) -> list[str]:
-    """Return council models configured for account plan."""
-    return resolve_council_models_for_plan(
-        plan,
-        FREE_COUNCIL_MODELS,
-        PRO_COUNCIL_MODELS,
-    )
 
 # Chairman model - synthesizes final response
 CHAIRMAN_MODEL = os.getenv("CHAIRMAN_MODEL") or DEFAULT_CHAIRMAN_MODEL
