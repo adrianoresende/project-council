@@ -69,3 +69,14 @@ Implement the task according to the technical specification and general engineer
    - What was implemented
    - How the solution was tested
    - The biggest issues or challenges encountered
+
+### [x] Step: Fix copy
+<!-- chat-id: ecdb45d9-4f49-484b-b5b6-50cf404668e3 -->
+
+Change "Search the web in real time (max 2 results)" to "Turn on search for the latest content or data"
+Avoid the max result on copy.
+
+### [ ] Step: Add UI "web"
+
+Add a web icon to the right of the "+" button when search is enabled.
+The icon must be green.

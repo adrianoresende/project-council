@@ -35,14 +35,14 @@ describe("ChatInterface web search toggle", () => {
     cleanup();
   });
 
-  it("shows free-plan web search limit in the composer tools menu", async () => {
+  it("shows web search description in the composer tools menu", async () => {
     const user = userEvent.setup();
     renderChatInterface({ userPlan: "free" });
 
     await user.click(screen.getByRole("button", { name: "Open file menu" }));
 
     expect(
-      screen.getByText("Search the web in real time (max 2 results)"),
+      screen.getByText("Turn on search for the latest content or data"),
     ).toBeTruthy();
   });
 
@@ -54,7 +54,7 @@ describe("ChatInterface web search toggle", () => {
     await user.click(screen.getByRole("button", { name: "Open file menu" }));
     await user.click(screen.getByRole("button", { name: /Web search/i }));
     expect(
-      screen.getByText("Search the web in real time (max 5 results)"),
+      screen.getByText("Turn on search for the latest content or data"),
     ).toBeTruthy();
 
     await user.type(screen.getByRole("textbox"), "Find latest AI updates");

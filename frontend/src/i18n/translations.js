@@ -83,7 +83,7 @@ export const translations = {
       uploadFileAction: "Upload file",
       uploadFileDescription: "PDF, images, Word, Excel or PowerPoint",
       webSearchAction: "Web search",
-      webSearchDescription: "Search the web in real time (max {{count}} results)",
+      webSearchDescription: "Turn on search for the latest content or data",
       webSearchEnabled: "Enabled",
       contextLabel: "Context",
       filesMessagePlaceholder: "Add a message about these files...",
@@ -311,7 +311,7 @@ export const translations = {
       uploadFileDescription: "PDF, imágenes, Word, Excel o PowerPoint",
       webSearchAction: "Búsqueda web",
       webSearchDescription:
-        "Busca información en la web en tiempo real (máx. {{count}} resultados)",
+        "Activa la búsqueda para obtener el contenido o los datos más recientes",
       webSearchEnabled: "Activa",
       contextLabel: "Contexto",
       filesMessagePlaceholder: "Añade un mensaje sobre estos archivos...",
@@ -544,7 +544,7 @@ export const translations = {
       uploadFileDescription: "PDF, imagens, Word, Excel ou PowerPoint",
       webSearchAction: "Busca na web",
       webSearchDescription:
-        "Busque na web em tempo real (máx. {{count}} resultados)",
+        "Ative a busca para obter o conteúdo ou os dados mais recentes",
       webSearchEnabled: "Ativa",
       contextLabel: "Contexto",
       filesMessagePlaceholder: "Adicione uma mensagem sobre esses arquivos...",
