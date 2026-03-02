@@ -83,4 +83,51 @@ describe("ChatInterface web search toggle", () => {
     expect(webSearchIndicator).toBeTruthy();
     expect(webSearchIndicator.className).toContain("text-emerald-600");
   });
+
+  it("keeps web search enabled when switching to a new conversation", async () => {
+    const user = userEvent.setup();
+    const onSendMessage = vi.fn();
+    const sharedProps = {
+      onSendMessage,
+      onCancelMessage: vi.fn(),
+      canCancelMessage: false,
+      isLoading: false,
+      userPlan: "free",
+    };
+
+    const { rerender } = render(
+      <I18nProvider>
+        <ChatInterface
+          {...sharedProps}
+          conversation={{ id: "conv-1", messages: [] }}
+        />
+      </I18nProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Open file menu" }));
+    await user.click(screen.getByRole("button", { name: /Web search/i }));
+    expect(
+      screen.getByRole("status", { name: /Web search/i }),
+    ).toBeTruthy();
+
+    rerender(
+      <I18nProvider>
+        <ChatInterface
+          {...sharedProps}
+          conversation={{ id: "conv-2", messages: [] }}
+        />
+      </I18nProvider>,
+    );
+
+    expect(
+      screen.getByRole("status", { name: /Web search/i }),
+    ).toBeTruthy();
+
+    await user.type(screen.getByRole("textbox"), "Any updates?");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+
+    expect(onSendMessage).toHaveBeenCalledWith("Any updates?", [], {
+      useWebSearch: true,
+    });
+  });
 });

@@ -201,6 +201,10 @@ export default function ChatInterface({
   }, []);
 
   useEffect(() => {
+    setInput("");
+    setSelectedFiles([]);
+    setFileValidationError("");
+    setIsFileMenuOpen(false);
     setIsProcessDetailsSidebarOpen(false);
     setProcessDetailsMessageIndex(null);
   }, [conversation?.id]);

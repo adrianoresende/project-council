@@ -81,3 +81,9 @@ Avoid the max result on copy.
 
 Add a web icon to the right of the "+" button when search is enabled.
 The icon must be green.
+
+### [x] Step: Bug conversation without plugin
+<!-- chat-id: 7fa61232-3678-48dc-892f-5fa803352656 -->
+
+I created a new conversation with search enabled, and the result returned without the search plugin or the search web.
+Fix it to new conversation use the plugin.

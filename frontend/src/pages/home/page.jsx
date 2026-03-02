@@ -59,7 +59,6 @@ export default function ChatPage({
         <AdminPage />
       ) : (
         <ChatInterface
-          key={conversation?.id || 'chat-empty'}
           conversation={conversation}
           onSendMessage={onSendMessage}
           onCancelMessage={onCancelMessage}
