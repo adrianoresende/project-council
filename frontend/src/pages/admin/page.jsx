@@ -30,6 +30,11 @@ function normalizeModelList(list) {
     .filter(Boolean);
 }
 
+function normalizeModelName(value) {
+  if (typeof value !== 'string') return '';
+  return value.trim();
+}
+
 function mergeUserIntoList(users, updatedUser) {
   if (!Array.isArray(users)) return [];
   if (!updatedUser || typeof updatedUser !== 'object') return users;
@@ -124,6 +129,7 @@ export default function AdminPage() {
       setSystemModels({
         free_models: normalizeModelList(payload?.free_models),
         pro_models: normalizeModelList(payload?.pro_models),
+        chairman_model: normalizeModelName(payload?.chairman_model),
       });
     } catch (loadError) {
       setSystemError(loadError.message || t('admin.system.failedLoad'));
@@ -279,6 +285,7 @@ export default function AdminPage() {
   const renewButtonLabel = selectedPlan === 'pro' ? t('admin.drawer.renewTokens') : t('admin.drawer.renewQuota');
   const freePlanModels = normalizeModelList(systemModels?.free_models);
   const proPlanModels = normalizeModelList(systemModels?.pro_models);
+  const chairmanModel = normalizeModelName(systemModels?.chairman_model);
   const isRefreshing = activeTab === 'users' ? isLoading : isSystemLoading;
 
   const handleRefresh = useCallback(() => {
@@ -440,7 +447,7 @@ export default function AdminPage() {
                   <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700">
                     {t('admin.system.freeTitle')}
                   </h2>
-                  {freePlanModels.length > 0 ? (
+                  {freePlanModels.length > 0 || chairmanModel ? (
                     <ul className="mt-3 space-y-2">
                       {freePlanModels.map((model, index) => (
                         <li
@@ -450,6 +457,12 @@ export default function AdminPage() {
                           {model}
                         </li>
                       ))}
+                      {chairmanModel && (
+                        <li className="flex items-center gap-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+                          <span className="font-semibold text-sky-900">chairman</span>
+                          <span className="font-mono">{chairmanModel}</span>
+                        </li>
+                      )}
                     </ul>
                   ) : (
                     <p className="mt-3 text-sm text-slate-500">{t('admin.system.noModels')}</p>
@@ -460,7 +473,7 @@ export default function AdminPage() {
                   <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700">
                     {t('admin.system.proTitle')}
                   </h2>
-                  {proPlanModels.length > 0 ? (
+                  {proPlanModels.length > 0 || chairmanModel ? (
                     <ul className="mt-3 space-y-2">
                       {proPlanModels.map((model, index) => (
                         <li
@@ -470,6 +483,12 @@ export default function AdminPage() {
                           {model}
                         </li>
                       ))}
+                      {chairmanModel && (
+                        <li className="flex items-center gap-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+                          <span className="font-semibold text-sky-900">chairman</span>
+                          <span className="font-mono">{chairmanModel}</span>
+                        </li>
+                      )}
                     </ul>
                   ) : (
                     <p className="mt-3 text-sm text-slate-500">{t('admin.system.noModels')}</p>

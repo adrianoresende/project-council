@@ -49,8 +49,8 @@ from .config import (
     FREE_DAILY_QUERY_LIMIT,
     COUNCIL_ENV,
     get_council_models_for_plan,
+    CHAIRMAN_MODEL,
     CORS_ALLOW_ORIGINS,
-    get_council_models_for_plan,
 )
 from .files import (
     PDF_TEXT_PLUGIN,
@@ -179,6 +179,7 @@ class AdminSystemModelsResponse(BaseModel):
 
     free_models: List[str]
     pro_models: List[str]
+    chairman_model: str
 
 
 class BillingPaymentResponse(BaseModel):
@@ -1033,6 +1034,7 @@ async def get_admin_system_models(_: Dict[str, Any] = Depends(get_current_admin_
     return {
         "free_models": get_council_models_for_plan("free"),
         "pro_models": get_council_models_for_plan("pro"),
+        "chairman_model": CHAIRMAN_MODEL,
     }
 
 

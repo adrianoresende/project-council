@@ -88,13 +88,19 @@ class AdminUsersContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(rows[1]["stripe_customer_id"], "cus_123")
 
     async def test_get_admin_system_models_returns_plan_specific_model_lists(self):
-        with patch(
-            "backend.main.get_council_models_for_plan",
-            side_effect=[
-                ["openai/gpt-5-nano", "google/gemini-2.5-flash-lite"],
-                ["openai/gpt-5.1", "anthropic/claude-sonnet-4.5"],
-            ],
-        ) as get_models_mock:
+        with (
+            patch(
+                "backend.main.get_council_models_for_plan",
+                side_effect=[
+                    ["openai/gpt-5-nano", "google/gemini-2.5-flash-lite"],
+                    ["openai/gpt-5.1", "anthropic/claude-sonnet-4.5"],
+                ],
+            ) as get_models_mock,
+            patch(
+                "backend.main.CHAIRMAN_MODEL",
+                "google/gemini-3-pro-preview",
+            ),
+        ):
             payload = await main.get_admin_system_models(_={"id": "admin-1"})
 
         self.assertEqual(
@@ -105,6 +111,7 @@ class AdminUsersContractTests(unittest.IsolatedAsyncioTestCase):
             payload["pro_models"],
             ["openai/gpt-5.1", "anthropic/claude-sonnet-4.5"],
         )
+        self.assertEqual(payload["chairman_model"], "google/gemini-3-pro-preview")
         get_models_mock.assert_has_calls([call("free"), call("pro")])
 
     async def test_get_admin_user_rejects_blank_user_id(self):

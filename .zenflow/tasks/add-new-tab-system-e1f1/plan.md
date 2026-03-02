@@ -69,3 +69,12 @@ Implement the task according to the technical specification and general engineer
    - What was implemented
    - How the solution was tested
    - The biggest issues or challenges encountered
+
+
+### [x] Step: Add chairman model
+<!-- chat-id: e55787f6-0ceb-4fa9-89ca-ea57c421113b -->
+
+Add chairman model on bottom of list model, with label: chairman for each plan.
+
+- Include chairman model information in that endpoint response so UI can render a labeled `chairman` row at the bottom of each plan list.
+- **UI contract detail:** In each plan card, render all plan models first, then render the chairman row last with label `chairman`.
