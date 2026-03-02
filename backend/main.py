@@ -52,6 +52,7 @@ from .config import (
 )
 from .files import (
     PDF_TEXT_PLUGIN,
+    WEB_SEARCH_PLUGIN,
     build_file_context_note,
     extract_message_content_and_files,
     prepare_uploaded_files_for_model,
@@ -76,7 +77,7 @@ app.add_middleware(
 class CreateConversationRequest(BaseModel):
     """Request to create a new conversation."""
 
-    pass
+    web_search_enabled: bool = False
 
 
 class ConversationMetadata(BaseModel):
@@ -86,6 +87,7 @@ class ConversationMetadata(BaseModel):
     created_at: str
     title: str
     archived: bool = False
+    web_search_enabled: bool = False
     message_count: int
     usage: Dict[str, Any] = Field(default_factory=dict)
 
@@ -97,6 +99,7 @@ class Conversation(BaseModel):
     created_at: str
     title: str
     archived: bool = False
+    web_search_enabled: bool = False
     messages: List[Dict[str, Any]]
     usage: Dict[str, Any] = Field(default_factory=dict)
 
@@ -328,6 +331,56 @@ def _plan_quota_descriptor(plan: str) -> tuple[int, str]:
     if _normalize_plan(plan) == "pro":
         return PRO_DAILY_TOKEN_CREDITS, "tokens"
     return FREE_DAILY_QUERY_LIMIT, "queries"
+
+
+def _plugin_dedup_key(plugin: Any) -> str | None:
+    """Build a stable dedupe key for plugin payloads."""
+    if not isinstance(plugin, dict) or not plugin:
+        return None
+
+    plugin_id = plugin.get("id")
+    if isinstance(plugin_id, str) and plugin_id.strip():
+        return f"id:{plugin_id.strip().lower()}"
+
+    try:
+        serialized = json.dumps(plugin, sort_keys=True, separators=(",", ":"))
+    except (TypeError, ValueError):
+        return None
+    return f"raw:{serialized}"
+
+
+def _merge_plugins(
+    *plugin_groups: List[Dict[str, Any]] | None,
+) -> List[Dict[str, Any]] | None:
+    """Merge plugin groups while preserving order and removing duplicates."""
+    merged_plugins: List[Dict[str, Any]] = []
+    seen_keys: set[str] = set()
+
+    for plugin_group in plugin_groups:
+        if not isinstance(plugin_group, list):
+            continue
+        for plugin in plugin_group:
+            dedupe_key = _plugin_dedup_key(plugin)
+            if dedupe_key is None or dedupe_key in seen_keys:
+                continue
+            seen_keys.add(dedupe_key)
+            merged_plugins.append(plugin)
+
+    if not merged_plugins:
+        return None
+    return merged_plugins
+
+
+def _resolve_stage_plugins(
+    conversation: Dict[str, Any] | None,
+    needs_pdf_parser: bool,
+) -> List[Dict[str, Any]] | None:
+    """Resolve plugins for model calls from conversation settings + attachments."""
+    web_search_enabled = bool((conversation or {}).get("web_search_enabled", False))
+    return _merge_plugins(
+        WEB_SEARCH_PLUGIN if web_search_enabled else None,
+        PDF_TEXT_PLUGIN if needs_pdf_parser else None,
+    )
 
 
 def _normalize_iana_timezone(value: Any) -> str | None:
@@ -1106,7 +1159,11 @@ async def create_conversation(
             )
 
     conversation_id = str(uuid.uuid4())
-    conversation = await storage.create_conversation(conversation_id, user["id"])
+    conversation = await storage.create_conversation(
+        conversation_id,
+        user["id"],
+        web_search_enabled=request.web_search_enabled,
+    )
     return conversation
 
 
@@ -1185,6 +1242,7 @@ async def send_message(
         await prepare_uploaded_files_for_model(incoming_files)
     )
     resolved_prompt = resolve_message_prompt(message_content, safe_user_files)
+    stage_plugins = _resolve_stage_plugins(conversation, needs_pdf_parser)
     defer_first_message_persistence = plan == "free" and is_first_message
 
     if not defer_first_message_persistence:
@@ -1213,7 +1271,7 @@ async def send_message(
         conversation_history=conversation_history,
         session_id=conversation_session_id,
         user_attachments=attachment_parts,
-        plugins=PDF_TEXT_PLUGIN if needs_pdf_parser else None,
+        plugins=stage_plugins,
     )
 
     # Free plan: consume one query only after Stage 1 has at least one successful response.
@@ -1279,7 +1337,7 @@ async def send_message(
             conversation_history=conversation_history,
             session_id=conversation_session_id,
             user_attachments=attachment_parts,
-            plugins=PDF_TEXT_PLUGIN if needs_pdf_parser else None,
+            plugins=stage_plugins,
         )
         metadata = {
             "label_to_model": label_to_model,
@@ -1396,6 +1454,7 @@ async def send_message_stream(
         await prepare_uploaded_files_for_model(incoming_files)
     )
     resolved_prompt = resolve_message_prompt(message_content, safe_user_files)
+    stage_plugins = _resolve_stage_plugins(conversation, needs_pdf_parser)
 
     async def event_generator():
         remaining_balance_current = remaining_balance_after
@@ -1577,7 +1636,7 @@ async def send_message_stream(
                 conversation_history=conversation_history,
                 session_id=conversation_session_id,
                 user_attachments=attachment_parts,
-                plugins=PDF_TEXT_PLUGIN if needs_pdf_parser else None,
+                plugins=stage_plugins,
             )
 
             # Free plan: consume one query only after Stage 1 has at least one successful response.
@@ -1627,7 +1686,7 @@ async def send_message_stream(
                 conversation_history=conversation_history,
                 session_id=conversation_session_id,
                 user_attachments=attachment_parts,
-                plugins=PDF_TEXT_PLUGIN if needs_pdf_parser else None,
+                plugins=stage_plugins,
             )
 
             if await http_request.is_disconnected():

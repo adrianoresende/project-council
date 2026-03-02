@@ -58,3 +58,33 @@
   - send message
   - assert downstream model query receives web plugin.
 - Add compatibility test for conversation fetch/list when field is missing (or defaulted).
+
+## Implementation Notes
+- Added conversation-level search setting to API models:
+  - `CreateConversationRequest.web_search_enabled`
+  - `ConversationMetadata.web_search_enabled`
+  - `Conversation.web_search_enabled`
+- Added `WEB_SEARCH_PLUGIN = [{"id": "web"}]` in `backend/files.py`.
+- Implemented plugin merge helpers in `backend/main.py`:
+  - `_plugin_dedup_key()`
+  - `_merge_plugins()`
+  - `_resolve_stage_plugins()`
+- Updated message execution paths to use merged plugins in both Stage 1 and Stage 3:
+  - non-stream endpoint `/api/conversations/{id}/message`
+  - stream endpoint `/api/conversations/{id}/message/stream`
+- Persisted the conversation setting in storage and schema:
+  - `backend/storage.py` reads/writes `web_search_enabled` on create/get/list
+  - `backend/supabase_schema.sql` adds `web_search_enabled boolean not null default false`
+- Updated frontend API contract:
+  - `frontend/src/api.js` now accepts `api.createConversation({ web_search_enabled: true|false })`
+  - default remains `false`.
+
+## Test Results
+- Added regression tests in `backend/tests/test_conversation_plugins.py`:
+  - plugin resolution combinations
+  - plugin propagation for `send_message`
+  - plugin propagation + merge for `send_message_stream`
+- Executed:
+  - `uv run python -m unittest backend.tests.test_conversation_plugins`
+  - `uv run python -m unittest backend.tests.test_free_plan_quota`
+- Result: all tests passed.

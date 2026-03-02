@@ -21,6 +21,21 @@ def _to_int(value: Any) -> int:
         return 0
 
 
+def _to_bool(value: Any) -> bool:
+    """Best-effort boolean conversion."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "t", "yes", "y", "on"}:
+            return True
+        if normalized in {"0", "false", "f", "no", "n", "off", ""}:
+            return False
+    return False
+
+
 def _to_float(value: Any) -> float | None:
     """Best-effort float conversion."""
     try:
@@ -355,7 +370,7 @@ async def _get_conversation_row(
         "GET",
         "conversations",
         params={
-            "select": "id,created_at,title,user_id,archived",
+            "select": "id,created_at,title,user_id,archived,web_search_enabled",
             "id": f"eq.{conversation_id}",
             "user_id": f"eq.{user_id}",
             "limit": "1",
@@ -366,7 +381,11 @@ async def _get_conversation_row(
     return rows[0]
 
 
-async def create_conversation(conversation_id: str, user_id: str) -> Dict[str, Any]:
+async def create_conversation(
+    conversation_id: str,
+    user_id: str,
+    web_search_enabled: bool = False,
+) -> Dict[str, Any]:
     """Create a new conversation owned by user_id."""
     rows = await _rest_request(
         "POST",
@@ -376,6 +395,7 @@ async def create_conversation(conversation_id: str, user_id: str) -> Dict[str, A
             "user_id": user_id,
             "title": "New Conversation",
             "archived": False,
+            "web_search_enabled": bool(web_search_enabled),
         },
         prefer="return=representation",
     )
@@ -385,6 +405,7 @@ async def create_conversation(conversation_id: str, user_id: str) -> Dict[str, A
         "created_at": row["created_at"],
         "title": row.get("title") or "New Conversation",
         "archived": bool(row.get("archived", False)),
+        "web_search_enabled": _to_bool(row.get("web_search_enabled")),
         "messages": [],
         "usage": _empty_usage_summary(),
     }
@@ -452,6 +473,7 @@ async def get_conversation(conversation_id: str, user_id: str) -> Optional[Dict[
         "created_at": conversation_row["created_at"],
         "title": conversation_row.get("title") or "New Conversation",
         "archived": bool(conversation_row.get("archived", False)),
+        "web_search_enabled": _to_bool(conversation_row.get("web_search_enabled")),
         "messages": messages,
         "usage": conversation_usage,
     }
@@ -463,7 +485,7 @@ async def list_conversations(user_id: str, archived: bool = False) -> List[Dict[
         "GET",
         "conversations",
         params={
-            "select": "id,created_at,title,archived",
+            "select": "id,created_at,title,archived,web_search_enabled",
             "user_id": f"eq.{user_id}",
             "archived": f"eq.{str(archived).lower()}",
             "order": "created_at.desc",
@@ -518,6 +540,7 @@ async def list_conversations(user_id: str, archived: bool = False) -> List[Dict[
                 "created_at": row["created_at"],
                 "title": row.get("title") or "New Conversation",
                 "archived": bool(row.get("archived", False)),
+                "web_search_enabled": _to_bool(row.get("web_search_enabled")),
                 "message_count": message_count,
                 "usage": usage_totals.get(row["id"], _empty_usage_summary()),
             }

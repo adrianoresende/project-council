@@ -5,11 +5,15 @@ create table if not exists public.conversations (
   user_id uuid not null references auth.users (id) on delete cascade,
   title text not null default 'New Conversation',
   archived boolean not null default false,
+  web_search_enabled boolean not null default false,
   created_at timestamptz not null default now()
 );
 
 alter table public.conversations
   add column if not exists archived boolean not null default false;
+
+alter table public.conversations
+  add column if not exists web_search_enabled boolean not null default false;
 
 create table if not exists public.messages (
   id bigint generated always as identity primary key,

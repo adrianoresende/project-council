@@ -239,10 +239,14 @@ export const api = {
   /**
    * Create a new conversation.
    */
-  async createConversation() {
+  async createConversation(options = {}) {
+    const webSearchEnabled = Boolean(
+      options && typeof options === 'object' ? options.web_search_enabled : false
+    );
+
     return request('/api/conversations', {
       method: 'POST',
-      body: JSON.stringify({}),
+      body: JSON.stringify({ web_search_enabled: webSearchEnabled }),
     });
   },
 

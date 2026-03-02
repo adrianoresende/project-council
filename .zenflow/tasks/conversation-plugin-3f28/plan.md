@@ -18,7 +18,7 @@ If you are blocked and need user clarification, mark the current step with `[!]`
 
 Analyze the bug report and design a solution.
 
-1. Review the bug description, error messages, and logs
+1. Review the bug description, and logs
 2. Clarify reproduction steps with the user if unclear
 3. Check existing tests for clues about expected behavior
 4. Locate relevant code sections and identify root cause
@@ -31,7 +31,8 @@ Save findings to `{@artifacts_path}/investigation.md` with:
 - Affected components
 - Proposed solution
 
-### [ ] Step: Implementation
+### [x] Step: Implementation
+<!-- chat-id: b113992c-805e-4380-8aba-2c331d358d38 -->
 Read `{@artifacts_path}/investigation.md`
 Implement the bug fix.
 

@@ -24,6 +24,7 @@ MAX_UPLOAD_FILES = 8
 MAX_UPLOAD_FILE_SIZE_BYTES = 15 * 1024 * 1024
 DEFAULT_FILE_ANALYSIS_PROMPT = "Please analyze the attached files."
 PDF_TEXT_PLUGIN = [{"id": "file-parser", "pdf": {"engine": "pdf-text"}}]
+WEB_SEARCH_PLUGIN = [{"id": "web"}]
 
 
 def sanitize_filename(filename: str | None, fallback: str) -> str:
