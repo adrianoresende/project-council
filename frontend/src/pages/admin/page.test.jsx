@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import AdminPage from './page';
 import { I18nProvider } from '../../i18n';
@@ -8,6 +8,7 @@ import { api } from '../../api';
 vi.mock('../../api', () => ({
   api: {
     getAdminUsers: vi.fn(),
+    getAdminSystemModels: vi.fn(),
     getAdminUser: vi.fn(),
     updateAdminUserPlan: vi.fn(),
     resetAdminUserQuota: vi.fn(),
@@ -36,6 +37,11 @@ describe('AdminPage drawer actions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     api.getAdminUsers.mockResolvedValue([baseUser]);
+    api.getAdminSystemModels.mockResolvedValue({
+      free_models: ['openai/gpt-5-nano', 'google/gemini-2.5-flash-lite'],
+      pro_models: ['openai/gpt-5.1', 'anthropic/claude-sonnet-4.5'],
+      chairman_model: 'google/gemini-3-pro-preview',
+    });
     api.getAdminUser.mockResolvedValue(baseUser);
     api.updateAdminUserPlan.mockResolvedValue({
       ...baseUser,
@@ -68,6 +74,43 @@ describe('AdminPage drawer actions', () => {
     });
     expect(await screen.findByText('User details')).toBeTruthy();
     expect(screen.getAllByText('cus_123').length).toBeGreaterThan(0);
+  });
+
+  it('shows system models in two plan cards when switching tabs', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByRole('button', {
+      name: 'Open user details for alpha@example.com',
+    });
+
+    await user.click(screen.getByRole('button', { name: 'System' }));
+
+    await waitFor(() => {
+      expect(api.getAdminSystemModels).toHaveBeenCalledTimes(1);
+    });
+
+    const freeHeading = await screen.findByText('Free plan models');
+    const proHeading = screen.getByText('Pro plan models');
+    expect(screen.getByText('openai/gpt-5-nano')).toBeTruthy();
+    expect(screen.getByText('anthropic/claude-sonnet-4.5')).toBeTruthy();
+    expect(screen.getAllByText('chairman').length).toBe(2);
+    expect(screen.getAllByText('google/gemini-3-pro-preview').length).toBe(2);
+
+    const freeCard = freeHeading.closest('section');
+    const proCard = proHeading.closest('section');
+    expect(freeCard).toBeTruthy();
+    expect(proCard).toBeTruthy();
+
+    const freeItems = within(freeCard).getAllByRole('listitem');
+    const proItems = within(proCard).getAllByRole('listitem');
+    const freeLast = freeItems[freeItems.length - 1];
+    const proLast = proItems[proItems.length - 1];
+
+    expect(freeLast.textContent).toContain('chairman');
+    expect(freeLast.textContent).toContain('google/gemini-3-pro-preview');
+    expect(proLast.textContent).toContain('chairman');
+    expect(proLast.textContent).toContain('google/gemini-3-pro-preview');
   });
 
   it('uses explicit save flow for plan changes', async () => {

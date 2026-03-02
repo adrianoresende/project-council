@@ -81,6 +81,7 @@ async def stage1_collect_responses(
     openrouter_user: str | None = None,
     user_attachments: List[Dict[str, Any]] | None = None,
     plugins: List[Dict[str, Any]] | None = None,
+    council_models: List[str] | None = None,
 ) -> List[Dict[str, Any]]:
     """
     Stage 1: collect individual responses from all council models.
@@ -122,8 +123,9 @@ async def stage1_collect_responses(
     else:
         messages.append({"role": "user", "content": stage1_user_text})
 
+    selected_council_models = council_models if council_models else COUNCIL_MODELS
     responses = await query_models_parallel(
-        COUNCIL_MODELS,
+        selected_council_models,
         messages,
         session_id=session_id,
         metadata={"stage": "stage1"},

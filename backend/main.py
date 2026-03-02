@@ -48,6 +48,8 @@ from .config import (
     PRO_DAILY_TOKEN_CREDITS,
     FREE_DAILY_QUERY_LIMIT,
     COUNCIL_ENV,
+    get_council_models_for_plan,
+    CHAIRMAN_MODEL,
     CORS_ALLOW_ORIGINS,
 )
 from .files import (
@@ -170,6 +172,14 @@ class AdminUserQuotaResetResponse(BaseModel):
     unit: str
     limit: int
     credits: int
+
+
+class AdminSystemModelsResponse(BaseModel):
+    """Admin response payload with system model lists by plan."""
+
+    free_models: List[str]
+    pro_models: List[str]
+    chairman_model: str
 
 
 class BillingPaymentResponse(BaseModel):
@@ -1018,6 +1028,16 @@ async def get_admin_users(_: Dict[str, Any] = Depends(get_current_admin_user)):
     return rows
 
 
+@app.get("/api/admin/system/models", response_model=AdminSystemModelsResponse)
+async def get_admin_system_models(_: Dict[str, Any] = Depends(get_current_admin_user)):
+    """Return configured council model lists for FREE and PRO plans."""
+    return {
+        "free_models": get_council_models_for_plan("free"),
+        "pro_models": get_council_models_for_plan("pro"),
+        "chairman_model": CHAIRMAN_MODEL,
+    }
+
+
 @app.get("/api/admin/users/{user_id}", response_model=AdminUserResponse)
 async def get_admin_user(
     user_id: str,
@@ -1181,6 +1201,7 @@ async def send_message(
     conversation_session_id = _resolve_conversation_session_id(conversation)
     openrouter_user = _resolve_openrouter_user_identifier(user)
     plan = _get_user_plan(user)
+    council_models = get_council_models_for_plan(plan)
     resolved_timezone = _resolve_user_timezone(user, user_timezone)
     remaining_balance_after = 0
 
@@ -1233,6 +1254,7 @@ async def send_message(
         openrouter_user=openrouter_user,
         user_attachments=attachment_parts,
         plugins=PDF_TEXT_PLUGIN if needs_pdf_parser else None,
+        council_models=council_models,
     )
 
     # Free plan: consume one query only after Stage 1 has at least one successful response.
@@ -1286,6 +1308,7 @@ async def send_message(
             stage1_results,
             conversation_history=conversation_history,
             session_id=conversation_session_id,
+            council_models=council_models,
             openrouter_user=openrouter_user,
         )
         aggregate_rankings = calculate_aggregate_rankings(
@@ -1398,6 +1421,7 @@ async def send_message_stream(
     conversation_session_id = _resolve_conversation_session_id(conversation)
     openrouter_user = _resolve_openrouter_user_identifier(user)
     plan = _get_user_plan(user)
+    council_models = get_council_models_for_plan(plan)
     resolved_timezone = _resolve_user_timezone(user, user_timezone)
     remaining_balance_after = 0
 
@@ -1603,6 +1627,7 @@ async def send_message_stream(
                 openrouter_user=openrouter_user,
                 user_attachments=attachment_parts,
                 plugins=PDF_TEXT_PLUGIN if needs_pdf_parser else None,
+                council_models=council_models,
             )
 
             # Free plan: consume one query only after Stage 1 has at least one successful response.
@@ -1631,6 +1656,7 @@ async def send_message_stream(
                 stage1_results,
                 conversation_history=conversation_history,
                 session_id=conversation_session_id,
+                council_models=council_models,
                 openrouter_user=openrouter_user,
             )
             aggregate_rankings = calculate_aggregate_rankings(

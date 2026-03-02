@@ -176,6 +176,10 @@ export const api = {
     return request("/api/admin/users");
   },
 
+  async getAdminSystemModels() {
+    return request("/api/admin/system/models");
+  },
+
   async getAdminUser(userId) {
     return request(`/api/admin/users/${encodeURIComponent(userId)}`);
   },

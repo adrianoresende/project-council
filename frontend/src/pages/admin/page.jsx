@@ -23,6 +23,18 @@ function normalizeStripeCustomerId(value) {
   return normalized || '-';
 }
 
+function normalizeModelList(list) {
+  if (!Array.isArray(list)) return [];
+  return list
+    .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+    .filter(Boolean);
+}
+
+function normalizeModelName(value) {
+  if (typeof value !== 'string') return '';
+  return value.trim();
+}
+
 function mergeUserIntoList(users, updatedUser) {
   if (!Array.isArray(users)) return [];
   if (!updatedUser || typeof updatedUser !== 'object') return users;
@@ -62,9 +74,14 @@ function formatQuotaRenewedNotice(payload, t) {
 
 export default function AdminPage() {
   const { language, t } = useI18n();
+  const [activeTab, setActiveTab] = useState('users');
   const [users, setUsers] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
+  const [systemModels, setSystemModels] = useState(null);
+  const [isSystemLoading, setIsSystemLoading] = useState(false);
+  const [hasLoadedSystemModels, setHasLoadedSystemModels] = useState(false);
+  const [systemError, setSystemError] = useState('');
   const [selectedUserId, setSelectedUserId] = useState('');
   const [selectedUser, setSelectedUser] = useState(null);
   const [isDrawerLoading, setIsDrawerLoading] = useState(false);
@@ -104,6 +121,31 @@ export default function AdminPage() {
     });
   }, [users, language]);
 
+  const loadSystemModels = useCallback(async () => {
+    setIsSystemLoading(true);
+    setSystemError('');
+    try {
+      const payload = await api.getAdminSystemModels();
+      setSystemModels({
+        free_models: normalizeModelList(payload?.free_models),
+        pro_models: normalizeModelList(payload?.pro_models),
+        chairman_model: normalizeModelName(payload?.chairman_model),
+      });
+    } catch (loadError) {
+      setSystemError(loadError.message || t('admin.system.failedLoad'));
+    } finally {
+      setHasLoadedSystemModels(true);
+      setIsSystemLoading(false);
+    }
+  }, [t]);
+
+  useEffect(() => {
+    if (activeTab !== 'system') return;
+    if (hasLoadedSystemModels) return;
+    if (isSystemLoading) return;
+    loadSystemModels();
+  }, [activeTab, hasLoadedSystemModels, isSystemLoading, loadSystemModels]);
+
   const handleCloseDrawer = useCallback(() => {
     drawerRequestIdRef.current += 1;
     setSelectedUserId('');
@@ -116,6 +158,16 @@ export default function AdminPage() {
     setIsSavingPlan(false);
     setIsRenewingQuota(false);
   }, []);
+
+  const handleSelectTab = useCallback(
+    (tab) => {
+      setActiveTab(tab);
+      if (tab !== 'users') {
+        handleCloseDrawer();
+      }
+    },
+    [handleCloseDrawer]
+  );
 
   const handleOpenUserDrawer = useCallback(
     async (user) => {
@@ -231,6 +283,18 @@ export default function AdminPage() {
       : 'border-emerald-200 bg-emerald-50 text-emerald-700';
 
   const renewButtonLabel = selectedPlan === 'pro' ? t('admin.drawer.renewTokens') : t('admin.drawer.renewQuota');
+  const freePlanModels = normalizeModelList(systemModels?.free_models);
+  const proPlanModels = normalizeModelList(systemModels?.pro_models);
+  const chairmanModel = normalizeModelName(systemModels?.chairman_model);
+  const isRefreshing = activeTab === 'users' ? isLoading : isSystemLoading;
+
+  const handleRefresh = useCallback(() => {
+    if (activeTab === 'system') {
+      loadSystemModels();
+      return;
+    }
+    loadUsers();
+  }, [activeTab, loadSystemModels, loadUsers]);
 
   return (
     <div className="relative h-screen flex-1 overflow-y-auto bg-slate-50">
@@ -243,108 +307,197 @@ export default function AdminPage() {
           <button
             type="button"
             className="btn rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-            onClick={loadUsers}
-            disabled={isLoading}
+            onClick={handleRefresh}
+            disabled={isRefreshing}
           >
-            {isLoading ? t('admin.refreshing') : t('admin.refresh')}
+            {isRefreshing ? t('admin.refreshing') : t('admin.refresh')}
           </button>
         </div>
 
         <div className="mb-4 border-b border-slate-200">
           <button
             type="button"
-            className="-mb-px border-b-2 border-sky-500 px-1 pb-3 pt-1 text-sm font-semibold text-sky-700"
-            aria-current="page"
+            className={`-mb-px border-b-2 px-1 pb-3 pt-1 text-sm font-semibold ${
+              activeTab === 'users'
+                ? 'border-sky-500 text-sky-700'
+                : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}
+            aria-current={activeTab === 'users' ? 'page' : undefined}
+            onClick={() => handleSelectTab('users')}
           >
             {t('admin.tabs.users')}
           </button>
+          <button
+            type="button"
+            className={`-mb-px ml-6 border-b-2 px-1 pb-3 pt-1 text-sm font-semibold ${
+              activeTab === 'system'
+                ? 'border-sky-500 text-sky-700'
+                : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}
+            aria-current={activeTab === 'system' ? 'page' : undefined}
+            onClick={() => handleSelectTab('system')}
+          >
+            {t('admin.tabs.system')}
+          </button>
         </div>
 
-        {error && (
-          <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-            {error}
-          </div>
-        )}
+        {activeTab === 'users' ? (
+          <>
+            {error && (
+              <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                {error}
+              </div>
+            )}
 
-        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-[0_8px_20px_rgba(15,23,42,0.05)]">
-          <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
-            <thead className="bg-slate-100 text-xs uppercase tracking-wide text-slate-600">
-              <tr>
-                <th className="px-4 py-3 font-semibold">{t('admin.columns.email')}</th>
-                <th className="px-4 py-3 font-semibold">{t('admin.columns.plan')}</th>
-                <th className="px-4 py-3 font-semibold">{t('admin.columns.stripeCustomerId')}</th>
-                <th className="px-4 py-3 font-semibold">{t('admin.columns.registrationDate')}</th>
-                <th className="px-4 py-3 font-semibold">{t('admin.columns.lastLoginDate')}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 bg-white text-slate-700">
-              {isLoading ? (
-                <tr>
-                  <td className="px-4 py-8 text-center text-sm text-slate-500" colSpan={5}>
-                    {t('admin.loadingUsers')}
-                  </td>
-                </tr>
-              ) : sortedUsers.length === 0 ? (
-                <tr>
-                  <td className="px-4 py-8 text-center text-sm text-slate-500" colSpan={5}>
-                    {t('admin.noUsers')}
-                  </td>
-                </tr>
-              ) : (
-                sortedUsers.map((user, index) => {
-                  const userId = typeof user?.user_id === 'string' ? user.user_id.trim() : '';
-                  const email = String(user?.email || '').trim() || '-';
-                  const plan = normalizePlan(user?.plan);
-                  const stripeCustomerId = normalizeStripeCustomerId(user?.stripe_customer_id);
-                  const isSelected = Boolean(userId) && selectedUserId === userId;
-
-                  return (
-                    <tr
-                      key={`${userId || email}-${user?.registration_date || 'none'}-${index}`}
-                      className={`transition-colors ${
-                        userId ? 'cursor-pointer hover:bg-slate-50 focus-within:bg-sky-50' : ''
-                      } ${isSelected ? 'bg-sky-50' : ''}`}
-                      role={userId ? 'button' : undefined}
-                      tabIndex={userId ? 0 : undefined}
-                      aria-label={userId ? t('admin.openUserDrawer', { email }) : undefined}
-                      onClick={userId ? () => handleOpenUserDrawer(user) : undefined}
-                      onKeyDown={
-                        userId
-                          ? (event) => {
-                              if (event.key === 'Enter' || event.key === ' ') {
-                                event.preventDefault();
-                                handleOpenUserDrawer(user);
-                              }
-                            }
-                          : undefined
-                      }
-                    >
-                      <td className="px-4 py-3 align-top font-medium text-slate-900">{email}</td>
-                      <td className="px-4 py-3 align-top">
-                        <span
-                          className={`rounded-full border px-2 py-1 text-xs font-bold ${
-                            plan === 'pro'
-                              ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                              : 'border-slate-300 bg-slate-100 text-slate-600'
-                          }`}
-                        >
-                          {plan.toUpperCase()}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 align-top font-mono text-xs text-slate-700">{stripeCustomerId}</td>
-                      <td className="px-4 py-3 align-top text-slate-600">
-                        {formatDateTime(user?.registration_date, language)}
-                      </td>
-                      <td className="px-4 py-3 align-top text-slate-600">
-                        {formatDateTime(user?.last_login_date, language)}
+            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-[0_8px_20px_rgba(15,23,42,0.05)]">
+              <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
+                <thead className="bg-slate-100 text-xs uppercase tracking-wide text-slate-600">
+                  <tr>
+                    <th className="px-4 py-3 font-semibold">{t('admin.columns.email')}</th>
+                    <th className="px-4 py-3 font-semibold">{t('admin.columns.plan')}</th>
+                    <th className="px-4 py-3 font-semibold">{t('admin.columns.stripeCustomerId')}</th>
+                    <th className="px-4 py-3 font-semibold">{t('admin.columns.registrationDate')}</th>
+                    <th className="px-4 py-3 font-semibold">{t('admin.columns.lastLoginDate')}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 bg-white text-slate-700">
+                  {isLoading ? (
+                    <tr>
+                      <td className="px-4 py-8 text-center text-sm text-slate-500" colSpan={5}>
+                        {t('admin.loadingUsers')}
                       </td>
                     </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+                  ) : sortedUsers.length === 0 ? (
+                    <tr>
+                      <td className="px-4 py-8 text-center text-sm text-slate-500" colSpan={5}>
+                        {t('admin.noUsers')}
+                      </td>
+                    </tr>
+                  ) : (
+                    sortedUsers.map((user, index) => {
+                      const userId = typeof user?.user_id === 'string' ? user.user_id.trim() : '';
+                      const email = String(user?.email || '').trim() || '-';
+                      const plan = normalizePlan(user?.plan);
+                      const stripeCustomerId = normalizeStripeCustomerId(user?.stripe_customer_id);
+                      const isSelected = Boolean(userId) && selectedUserId === userId;
+
+                      return (
+                        <tr
+                          key={`${userId || email}-${user?.registration_date || 'none'}-${index}`}
+                          className={`transition-colors ${
+                            userId ? 'cursor-pointer hover:bg-slate-50 focus-within:bg-sky-50' : ''
+                          } ${isSelected ? 'bg-sky-50' : ''}`}
+                          role={userId ? 'button' : undefined}
+                          tabIndex={userId ? 0 : undefined}
+                          aria-label={userId ? t('admin.openUserDrawer', { email }) : undefined}
+                          onClick={userId ? () => handleOpenUserDrawer(user) : undefined}
+                          onKeyDown={
+                            userId
+                              ? (event) => {
+                                  if (event.key === 'Enter' || event.key === ' ') {
+                                    event.preventDefault();
+                                    handleOpenUserDrawer(user);
+                                  }
+                                }
+                              : undefined
+                          }
+                        >
+                          <td className="px-4 py-3 align-top font-medium text-slate-900">{email}</td>
+                          <td className="px-4 py-3 align-top">
+                            <span
+                              className={`rounded-full border px-2 py-1 text-xs font-bold ${
+                                plan === 'pro'
+                                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                  : 'border-slate-300 bg-slate-100 text-slate-600'
+                              }`}
+                            >
+                              {plan.toUpperCase()}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 align-top font-mono text-xs text-slate-700">{stripeCustomerId}</td>
+                          <td className="px-4 py-3 align-top text-slate-600">
+                            {formatDateTime(user?.registration_date, language)}
+                          </td>
+                          <td className="px-4 py-3 align-top text-slate-600">
+                            {formatDateTime(user?.last_login_date, language)}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
+        ) : (
+          <div className="space-y-4">
+            {systemError && (
+              <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                {systemError}
+              </div>
+            )}
+
+            {isSystemLoading && !systemModels ? (
+              <div className="rounded-xl border border-slate-200 bg-white px-4 py-10 text-center text-sm text-slate-500 shadow-[0_8px_20px_rgba(15,23,42,0.05)]">
+                {t('admin.system.loading')}
+              </div>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-2">
+                <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-[0_8px_20px_rgba(15,23,42,0.05)]">
+                  <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700">
+                    {t('admin.system.freeTitle')}
+                  </h2>
+                  {freePlanModels.length > 0 || chairmanModel ? (
+                    <ul className="mt-3 space-y-2">
+                      {freePlanModels.map((model, index) => (
+                        <li
+                          key={`${model}-${index}`}
+                          className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-xs text-slate-700"
+                        >
+                          {model}
+                        </li>
+                      ))}
+                      {chairmanModel && (
+                        <li className="flex items-center gap-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+                          <span className="font-semibold text-sky-900">chairman</span>
+                          <span className="font-mono">{chairmanModel}</span>
+                        </li>
+                      )}
+                    </ul>
+                  ) : (
+                    <p className="mt-3 text-sm text-slate-500">{t('admin.system.noModels')}</p>
+                  )}
+                </section>
+
+                <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-[0_8px_20px_rgba(15,23,42,0.05)]">
+                  <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700">
+                    {t('admin.system.proTitle')}
+                  </h2>
+                  {proPlanModels.length > 0 || chairmanModel ? (
+                    <ul className="mt-3 space-y-2">
+                      {proPlanModels.map((model, index) => (
+                        <li
+                          key={`${model}-${index}`}
+                          className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-xs text-slate-700"
+                        >
+                          {model}
+                        </li>
+                      ))}
+                      {chairmanModel && (
+                        <li className="flex items-center gap-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+                          <span className="font-semibold text-sky-900">chairman</span>
+                          <span className="font-mono">{chairmanModel}</span>
+                        </li>
+                      )}
+                    </ul>
+                  ) : (
+                    <p className="mt-3 text-sm text-slate-500">{t('admin.system.noModels')}</p>
+                  )}
+                </section>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div

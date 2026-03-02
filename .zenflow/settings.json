@@ -1,0 +1,4 @@
+{
+  "dev_server_script": "./start.sh",
+  "copy_files": [".env", "frontend/.env"]
+}
