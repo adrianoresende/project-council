@@ -187,7 +187,7 @@ export default function AccountPage() {
   }, [summary, t]);
 
   return (
-    <div className="h-screen flex-1 overflow-y-auto bg-gradient-to-br from-blue-50 via-sky-50 to-teal-50">
+    <div className="h-full flex-1 overflow-y-auto bg-gradient-to-br from-blue-50 via-sky-50 to-teal-50">
       <div className="mx-auto my-10 w-[calc(100%-32px)] max-w-[720px] rounded-2xl border border-blue-100 bg-white px-6 py-7 shadow-[0_10px_28px_rgba(29,78,156,0.08)]">
         <h1 className="mb-5 text-3xl text-slate-900">{t("account.title")}</h1>
 

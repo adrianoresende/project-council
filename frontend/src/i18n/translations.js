@@ -61,6 +61,22 @@ export const translations = {
       queryLeftMany: "queries left",
       upgradeButton: "Upgrade",
       adminTab: "Admin",
+      openMenu: "Open menu",
+      sendFeedbackButton: "Send feedback",
+    },
+    feedback: {
+      title: "Send feedback",
+      description:
+        "Your feedback is very important to help us deliver the best possible experience.",
+      messageLabel: "Your message.",
+      messagePlaceholder:
+        "Tell us what is working well or what we can improve.",
+      submitButton: "Send feedback",
+      submittingButton: "Sending...",
+      successTitle: "Thank you for your feedback!",
+      successDescription: "Your message has been sent successfully.",
+      errorTryAgain: "Could not send feedback. Please try again now or later.",
+      closeModal: "Close feedback modal",
     },
     chat: {
       continuePlaceholder:
@@ -82,6 +98,9 @@ export const translations = {
       openUploadMenu: "Open file menu",
       uploadFileAction: "Upload file",
       uploadFileDescription: "PDF, images, Word, Excel or PowerPoint",
+      webSearchAction: "Web search",
+      webSearchDescription: "Turn on search for the latest content or data",
+      webSearchEnabled: "Enabled",
       contextLabel: "Context",
       filesMessagePlaceholder: "Add a message about these files...",
       unsupportedFileTypeError:
@@ -171,6 +190,7 @@ export const translations = {
       tabs: {
         users: "Users",
         system: "System",
+        feedback: "Feedback",
       },
       system: {
         freeTitle: "Free plan models",
@@ -179,6 +199,11 @@ export const translations = {
         failedLoad: "Failed to load system models.",
         noModels: "No models configured.",
       },
+      feedback: {
+        loading: "Loading feedback...",
+        empty: "No feedback messages yet.",
+        failedLoad: "Failed to load feedback messages.",
+      },
       openUserDrawer: "Open user details for {{email}}",
       columns: {
         email: "Email",
@@ -186,6 +211,9 @@ export const translations = {
         stripeCustomerId: "Stripe Customer ID",
         registrationDate: "Registration date",
         lastLoginDate: "Last login date",
+        userEmail: "User (email)",
+        message: "Message",
+        dateSent: "Date sent",
       },
       drawer: {
         title: "User details",
@@ -203,7 +231,8 @@ export const translations = {
         renewTokens: "Renew daily token quota",
         renewingQuota: "Renewing...",
         quotaRenewed: "Quota renewed.",
-        quotaRenewedWithAmount: "Quota renewed: {{credits}} {{unit}} available.",
+        quotaRenewedWithAmount:
+          "Quota renewed: {{credits}} {{unit}} available.",
         failedRenewQuota: "Failed to renew user quota.",
       },
     },
@@ -284,6 +313,22 @@ export const translations = {
       queryLeftMany: "consultas restantes",
       upgradeButton: "Mejorar",
       adminTab: "Admin",
+      openMenu: "Abrir menú",
+      sendFeedbackButton: "Enviar comentarios",
+    },
+    feedback: {
+      title: "Enviar comentarios",
+      description:
+        "Tus comentarios son muy importantes para ayudarnos a ofrecer la mejor experiencia posible.",
+      messageLabel: "Tu mensaje.",
+      messagePlaceholder: "Cuéntanos qué funciona bien o qué podemos mejorar.",
+      submitButton: "Enviar comentarios",
+      submittingButton: "Enviando...",
+      successTitle: "Gracias por tus comentarios.",
+      successDescription: "Tu mensaje se envió correctamente.",
+      errorTryAgain:
+        "No pudimos enviar tus comentarios. Inténtalo de nuevo ahora o más tarde.",
+      closeModal: "Cerrar modal de comentarios",
     },
     chat: {
       continuePlaceholder:
@@ -306,6 +351,10 @@ export const translations = {
       openUploadMenu: "Abrir menú de archivos",
       uploadFileAction: "Subir archivo",
       uploadFileDescription: "PDF, imágenes, Word, Excel o PowerPoint",
+      webSearchAction: "Búsqueda web",
+      webSearchDescription:
+        "Activa la búsqueda para obtener el contenido o los datos más recientes",
+      webSearchEnabled: "Activa",
       contextLabel: "Contexto",
       filesMessagePlaceholder: "Añade un mensaje sobre estos archivos...",
       unsupportedFileTypeError:
@@ -400,6 +449,7 @@ export const translations = {
       tabs: {
         users: "Usuarios",
         system: "Sistema",
+        feedback: "Comentarios",
       },
       system: {
         freeTitle: "Modelos del plan Gratis",
@@ -408,6 +458,11 @@ export const translations = {
         failedLoad: "No se pudieron cargar los modelos del sistema.",
         noModels: "No hay modelos configurados.",
       },
+      feedback: {
+        loading: "Cargando comentarios...",
+        empty: "Aún no hay comentarios.",
+        failedLoad: "No se pudieron cargar los comentarios.",
+      },
       openUserDrawer: "Abrir detalles del usuario {{email}}",
       columns: {
         email: "Correo electrónico",
@@ -415,6 +470,9 @@ export const translations = {
         stripeCustomerId: "ID de cliente Stripe",
         registrationDate: "Fecha de registro",
         lastLoginDate: "Último acceso",
+        userEmail: "Usuario (correo)",
+        message: "Mensaje",
+        dateSent: "Fecha de envío",
       },
       drawer: {
         title: "Detalles del usuario",
@@ -432,7 +490,8 @@ export const translations = {
         renewTokens: "Renovar cuota diaria de tokens",
         renewingQuota: "Renovando...",
         quotaRenewed: "Cuota renovada.",
-        quotaRenewedWithAmount: "Cuota renovada: {{credits}} {{unit}} disponibles.",
+        quotaRenewedWithAmount:
+          "Cuota renovada: {{credits}} {{unit}} disponibles.",
         failedRenewQuota: "No se pudo renovar la cuota del usuario.",
       },
     },
@@ -513,6 +572,23 @@ export const translations = {
       queryLeftMany: "consultas restantes",
       upgradeButton: "Fazer upgrade",
       adminTab: "Admin",
+      openMenu: "Abrir menu",
+      sendFeedbackButton: "Enviar feedback",
+    },
+    feedback: {
+      title: "Enviar feedback",
+      description:
+        "Seu feedback é muito importante para nos ajudar a entregar a melhor experiência possível.",
+      messageLabel: "Sua mensagem.",
+      messagePlaceholder:
+        "Conte para nós o que está funcionando bem ou o que podemos melhorar.",
+      submitButton: "Enviar feedback",
+      submittingButton: "Enviando...",
+      successTitle: "Obrigado pelo seu feedback.",
+      successDescription: "Sua mensagem foi enviada com sucesso.",
+      errorTryAgain:
+        "Não foi possível enviar seu feedback. Tente novamente agora ou mais tarde.",
+      closeModal: "Fechar modal de feedback",
     },
     chat: {
       continuePlaceholder:
@@ -535,6 +611,10 @@ export const translations = {
       openUploadMenu: "Abrir menu de arquivos",
       uploadFileAction: "Enviar arquivo",
       uploadFileDescription: "PDF, imagens, Word, Excel ou PowerPoint",
+      webSearchAction: "Busca na web",
+      webSearchDescription:
+        "Ative a busca para obter o conteúdo ou os dados mais recentes",
+      webSearchEnabled: "Ativa",
       contextLabel: "Contexto",
       filesMessagePlaceholder: "Adicione uma mensagem sobre esses arquivos...",
       unsupportedFileTypeError:
@@ -628,6 +708,7 @@ export const translations = {
       tabs: {
         users: "Usuários",
         system: "Sistema",
+        feedback: "Feedback",
       },
       system: {
         freeTitle: "Modelos do plano Grátis",
@@ -636,6 +717,11 @@ export const translations = {
         failedLoad: "Falha ao carregar modelos do sistema.",
         noModels: "Nenhum modelo configurado.",
       },
+      feedback: {
+        loading: "Carregando feedback...",
+        empty: "Ainda não há feedbacks.",
+        failedLoad: "Falha ao carregar feedbacks.",
+      },
       openUserDrawer: "Abrir detalhes do usuário {{email}}",
       columns: {
         email: "E-mail",
@@ -643,6 +729,9 @@ export const translations = {
         stripeCustomerId: "ID do cliente Stripe",
         registrationDate: "Data de registro",
         lastLoginDate: "Data do último login",
+        userEmail: "Usuário (e-mail)",
+        message: "Mensagem",
+        dateSent: "Data de envio",
       },
       drawer: {
         title: "Detalhes do usuário",
@@ -660,7 +749,8 @@ export const translations = {
         renewTokens: "Renovar cota diária de tokens",
         renewingQuota: "Renovando...",
         quotaRenewed: "Cota renovada.",
-        quotaRenewedWithAmount: "Cota renovada: {{credits}} {{unit}} disponíveis.",
+        quotaRenewedWithAmount:
+          "Cota renovada: {{credits}} {{unit}} disponíveis.",
         failedRenewQuota: "Falha ao renovar cota do usuário.",
       },
     },

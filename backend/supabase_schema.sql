@@ -66,6 +66,14 @@ create table if not exists public.billing_payments (
   payload jsonb not null default '{}'::jsonb
 );
 
+create table if not exists public.feedback_messages (
+  id bigint generated always as identity primary key,
+  user_id uuid not null references auth.users (id) on delete cascade,
+  user_email text not null,
+  message text not null check (char_length(trim(message)) between 1 and 4000),
+  created_at timestamptz not null default now()
+);
+
 alter table public.billing_payments
   add column if not exists paid_at timestamptz;
 
@@ -88,10 +96,17 @@ create unique index if not exists billing_payments_event_id_uidx
   on public.billing_payments (stripe_event_id)
   where stripe_event_id is not null;
 
+create index if not exists feedback_messages_created_at_idx
+  on public.feedback_messages (created_at desc);
+
+create index if not exists feedback_messages_user_id_created_at_idx
+  on public.feedback_messages (user_id, created_at desc);
+
 alter table public.conversations enable row level security;
 alter table public.messages enable row level security;
 alter table public.account_credits enable row level security;
 alter table public.billing_payments enable row level security;
+alter table public.feedback_messages enable row level security;
 
 drop policy if exists conversations_owner_select on public.conversations;
 drop policy if exists conversations_owner_insert on public.conversations;
@@ -182,6 +197,21 @@ create policy billing_payments_owner_delete
   for delete
   to authenticated
   using (auth.uid() = user_id);
+
+drop policy if exists feedback_messages_owner_select on public.feedback_messages;
+drop policy if exists feedback_messages_owner_insert on public.feedback_messages;
+
+create policy feedback_messages_owner_select
+  on public.feedback_messages
+  for select
+  to authenticated
+  using (auth.uid() = user_id);
+
+create policy feedback_messages_owner_insert
+  on public.feedback_messages
+  for insert
+  to authenticated
+  with check (auth.uid() = user_id);
 
 drop policy if exists messages_owner_select on public.messages;
 drop policy if exists messages_owner_insert on public.messages;
@@ -331,7 +361,9 @@ grant select, insert, update, delete on public.conversations to authenticated;
 grant select, insert, update, delete on public.messages to authenticated;
 grant select, insert, update, delete on public.account_credits to authenticated;
 grant select, insert, update, delete on public.billing_payments to authenticated;
+grant select, insert, update, delete on public.feedback_messages to authenticated;
 grant usage, select on sequence public.messages_id_seq to authenticated;
+grant usage, select on sequence public.feedback_messages_id_seq to authenticated;
 grant execute on function public.get_account_credits(uuid) to authenticated, service_role;
 grant execute on function public.add_account_credits(uuid, integer) to authenticated, service_role;
 grant execute on function public.consume_account_credit(uuid) to authenticated, service_role;

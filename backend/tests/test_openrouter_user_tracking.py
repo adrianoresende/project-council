@@ -128,6 +128,38 @@ class OpenRouterUserIdentifierTests(unittest.TestCase):
         self.assertIsNone(resolved)
 
 
+class OpenRouterPluginBuilderTests(unittest.TestCase):
+    def test_build_model_plugins_returns_none_when_disabled(self):
+        plugins = main._build_model_plugins(
+            needs_pdf_parser=False,
+            enable_web_search=False,
+            plan="free",
+        )
+        self.assertIsNone(plugins)
+
+    def test_build_model_plugins_adds_web_for_free_plan(self):
+        plugins = main._build_model_plugins(
+            needs_pdf_parser=False,
+            enable_web_search=True,
+            plan="free",
+        )
+        self.assertEqual(plugins, [{"id": "web", "max_results": 2}])
+
+    def test_build_model_plugins_merges_pdf_and_web_for_pro_plan(self):
+        plugins = main._build_model_plugins(
+            needs_pdf_parser=True,
+            enable_web_search=True,
+            plan="pro",
+        )
+        self.assertEqual(
+            plugins,
+            [
+                {"id": "file-parser", "pdf": {"engine": "pdf-text"}},
+                {"id": "web", "max_results": 5},
+            ],
+        )
+
+
 class OpenRouterEndpointPropagationTests(unittest.IsolatedAsyncioTestCase):
     @staticmethod
     def _free_user(email: str):
@@ -135,6 +167,15 @@ class OpenRouterEndpointPropagationTests(unittest.IsolatedAsyncioTestCase):
             "id": "user-free-1",
             "email": email,
             "user_metadata": {"plan": "free"},
+            "app_metadata": {},
+        }
+
+    @staticmethod
+    def _pro_user(email: str):
+        return {
+            "id": "user-pro-1",
+            "email": email,
+            "user_metadata": {"plan": "pro"},
             "app_metadata": {},
         }
 
@@ -284,6 +325,146 @@ class OpenRouterEndpointPropagationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             title_mock.await_args.kwargs.get("openrouter_user"),
             expected_user,
+        )
+
+    async def test_send_message_enables_web_search_for_free_plan(self):
+        stage1_mock = AsyncMock(
+            return_value=[
+                {
+                    "model": "openai/gpt-5.1",
+                    "response": "Stage 1",
+                    "usage": main.empty_usage_summary(),
+                }
+            ]
+        )
+        stage2_mock = AsyncMock(return_value=([], {}))
+        stage3_mock = AsyncMock(
+            return_value={
+                "model": "openai/gpt-5.1",
+                "response": "Stage 3",
+                "usage": main.empty_usage_summary(),
+            }
+        )
+
+        with (
+            patch(
+                "backend.main.extract_message_content_and_files",
+                new=AsyncMock(return_value=("Hello", [])),
+            ),
+            patch(
+                "backend.main.get_owned_conversation",
+                new=AsyncMock(return_value={"id": "conv-1", "messages": []}),
+            ),
+            patch("backend.main._get_remaining_daily_queries", new=AsyncMock(return_value=3)),
+            patch(
+                "backend.main.prepare_uploaded_files_for_model",
+                new=AsyncMock(return_value=([], [], False)),
+            ),
+            patch("backend.main.resolve_message_prompt", return_value="Hello"),
+            patch("backend.main.storage.add_user_message", new=AsyncMock()),
+            patch(
+                "backend.main.generate_conversation_title",
+                new=AsyncMock(
+                    return_value={
+                        "title": "Title",
+                        "usage": main.empty_usage_summary(),
+                    }
+                ),
+            ),
+            patch("backend.main.storage.update_conversation_title", new=AsyncMock()),
+            patch("backend.main.storage.consume_account_tokens", new=AsyncMock(return_value=2)),
+            patch("backend.main.stage1_collect_responses", new=stage1_mock),
+            patch("backend.main.stage2_collect_rankings", new=stage2_mock),
+            patch("backend.main.stage3_synthesize_final", new=stage3_mock),
+            patch("backend.main.storage.add_assistant_message", new=AsyncMock()),
+            patch("backend.main.storage.get_conversation", new=AsyncMock(return_value={})),
+        ):
+            await main.send_message(
+                conversation_id="conv-1",
+                http_request=object(),
+                user_timezone="America/New_York",
+                web_search="true",
+                user=self._free_user("free@example.com"),
+            )
+
+        self.assertEqual(
+            stage1_mock.await_args.kwargs.get("plugins"),
+            [{"id": "web", "max_results": 2}],
+        )
+        self.assertEqual(
+            stage3_mock.await_args.kwargs.get("plugins"),
+            [{"id": "web", "max_results": 2}],
+        )
+
+    async def test_send_message_stream_enables_web_search_for_pro_plan(self):
+        stage1_mock = AsyncMock(
+            return_value=[
+                {
+                    "model": "openai/gpt-5.1",
+                    "response": "Stage 1",
+                    "usage": main.empty_usage_summary(),
+                }
+            ]
+        )
+        stage2_mock = AsyncMock(return_value=([], {}))
+        stage3_mock = AsyncMock(
+            return_value={
+                "model": "openai/gpt-5.1",
+                "response": "Stage 3",
+                "usage": main.empty_usage_summary(),
+            }
+        )
+
+        with (
+            patch(
+                "backend.main.extract_message_content_and_files",
+                new=AsyncMock(return_value=("Hello", [])),
+            ),
+            patch(
+                "backend.main.get_owned_conversation",
+                new=AsyncMock(return_value={"id": "conv-1", "messages": []}),
+            ),
+            patch("backend.main._get_remaining_daily_tokens", new=AsyncMock(return_value=100)),
+            patch(
+                "backend.main.prepare_uploaded_files_for_model",
+                new=AsyncMock(return_value=([], [], False)),
+            ),
+            patch("backend.main.resolve_message_prompt", return_value="Hello"),
+            patch("backend.main.storage.add_user_message", new=AsyncMock()),
+            patch(
+                "backend.main.generate_conversation_title",
+                new=AsyncMock(
+                    return_value={
+                        "title": "Title",
+                        "usage": main.empty_usage_summary(),
+                    }
+                ),
+            ),
+            patch("backend.main.storage.update_conversation_title", new=AsyncMock()),
+            patch("backend.main.storage.consume_account_tokens", new=AsyncMock(return_value=100)),
+            patch("backend.main.stage1_collect_responses", new=stage1_mock),
+            patch("backend.main.stage2_collect_rankings", new=stage2_mock),
+            patch("backend.main.stage3_synthesize_final", new=stage3_mock),
+            patch("backend.main.storage.add_assistant_message", new=AsyncMock()),
+            patch("backend.main.storage.get_conversation", new=AsyncMock(return_value={})),
+        ):
+            response = await main.send_message_stream(
+                conversation_id="conv-1",
+                http_request=_RequestStub(),
+                user_timezone="America/New_York",
+                web_search="true",
+                user=self._pro_user("pro@example.com"),
+            )
+            async for _ in response.body_iterator:
+                pass
+
+        self.assertEqual(
+            stage1_mock.await_args.kwargs.get("plugins"),
+            [{"id": "web", "max_results": 5}],
+        )
+        self.assertEqual(
+            stage3_mock.await_args.kwargs.get("plugins"),
+            [{"id": "web", "max_results": 5}],
         )
 
 

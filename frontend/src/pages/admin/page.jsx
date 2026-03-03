@@ -35,6 +35,21 @@ function normalizeModelName(value) {
   return value.trim();
 }
 
+function normalizeFeedbackRows(rows) {
+  if (!Array.isArray(rows)) return [];
+  return rows.map((row, index) => {
+    const userEmail = typeof row?.user_email === 'string' ? row.user_email.trim() : '';
+    const message = typeof row?.message === 'string' ? row.message : '';
+    const dateSent = typeof row?.date_sent === 'string' ? row.date_sent.trim() : '';
+    return {
+      key: `${userEmail || 'unknown'}-${dateSent || 'unknown'}-${index}`,
+      user_email: userEmail,
+      message,
+      date_sent: dateSent,
+    };
+  });
+}
+
 function mergeUserIntoList(users, updatedUser) {
   if (!Array.isArray(users)) return [];
   if (!updatedUser || typeof updatedUser !== 'object') return users;
@@ -82,6 +97,10 @@ export default function AdminPage() {
   const [isSystemLoading, setIsSystemLoading] = useState(false);
   const [hasLoadedSystemModels, setHasLoadedSystemModels] = useState(false);
   const [systemError, setSystemError] = useState('');
+  const [feedbackMessages, setFeedbackMessages] = useState([]);
+  const [isFeedbackLoading, setIsFeedbackLoading] = useState(false);
+  const [hasLoadedFeedbackMessages, setHasLoadedFeedbackMessages] = useState(false);
+  const [feedbackError, setFeedbackError] = useState('');
   const [selectedUserId, setSelectedUserId] = useState('');
   const [selectedUser, setSelectedUser] = useState(null);
   const [isDrawerLoading, setIsDrawerLoading] = useState(false);
@@ -145,6 +164,28 @@ export default function AdminPage() {
     if (isSystemLoading) return;
     loadSystemModels();
   }, [activeTab, hasLoadedSystemModels, isSystemLoading, loadSystemModels]);
+
+  const loadFeedbackMessages = useCallback(async () => {
+    setIsFeedbackLoading(true);
+    setFeedbackError('');
+    try {
+      const payload = await api.getAdminFeedback();
+      setFeedbackMessages(normalizeFeedbackRows(payload));
+    } catch (loadError) {
+      setFeedbackError(loadError.message || t('admin.feedback.failedLoad'));
+      setFeedbackMessages([]);
+    } finally {
+      setHasLoadedFeedbackMessages(true);
+      setIsFeedbackLoading(false);
+    }
+  }, [t]);
+
+  useEffect(() => {
+    if (activeTab !== 'feedback') return;
+    if (hasLoadedFeedbackMessages) return;
+    if (isFeedbackLoading) return;
+    loadFeedbackMessages();
+  }, [activeTab, hasLoadedFeedbackMessages, isFeedbackLoading, loadFeedbackMessages]);
 
   const handleCloseDrawer = useCallback(() => {
     drawerRequestIdRef.current += 1;
@@ -286,18 +327,27 @@ export default function AdminPage() {
   const freePlanModels = normalizeModelList(systemModels?.free_models);
   const proPlanModels = normalizeModelList(systemModels?.pro_models);
   const chairmanModel = normalizeModelName(systemModels?.chairman_model);
-  const isRefreshing = activeTab === 'users' ? isLoading : isSystemLoading;
+  const isRefreshing =
+    activeTab === 'users'
+      ? isLoading
+      : activeTab === 'system'
+        ? isSystemLoading
+        : isFeedbackLoading;
 
   const handleRefresh = useCallback(() => {
     if (activeTab === 'system') {
       loadSystemModels();
       return;
     }
+    if (activeTab === 'feedback') {
+      loadFeedbackMessages();
+      return;
+    }
     loadUsers();
-  }, [activeTab, loadSystemModels, loadUsers]);
+  }, [activeTab, loadFeedbackMessages, loadSystemModels, loadUsers]);
 
   return (
-    <div className="relative h-screen flex-1 overflow-y-auto bg-slate-50">
+    <div className="relative h-full flex-1 overflow-y-auto bg-slate-50">
       <div className="mx-auto max-w-[1100px] px-6 pb-12 pt-10">
         <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -338,6 +388,18 @@ export default function AdminPage() {
             onClick={() => handleSelectTab('system')}
           >
             {t('admin.tabs.system')}
+          </button>
+          <button
+            type="button"
+            className={`-mb-px ml-6 border-b-2 px-1 pb-3 pt-1 text-sm font-semibold ${
+              activeTab === 'feedback'
+                ? 'border-sky-500 text-sky-700'
+                : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}
+            aria-current={activeTab === 'feedback' ? 'page' : undefined}
+            onClick={() => handleSelectTab('feedback')}
+          >
+            {t('admin.tabs.feedback')}
           </button>
         </div>
 
@@ -429,7 +491,7 @@ export default function AdminPage() {
               </table>
             </div>
           </>
-        ) : (
+        ) : activeTab === 'system' ? (
           <div className="space-y-4">
             {systemError && (
               <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
@@ -496,6 +558,51 @@ export default function AdminPage() {
                 </section>
               </div>
             )}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {feedbackError && (
+              <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                {feedbackError}
+              </div>
+            )}
+
+            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-[0_8px_20px_rgba(15,23,42,0.05)]">
+              <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
+                <thead className="bg-slate-100 text-xs uppercase tracking-wide text-slate-600">
+                  <tr>
+                    <th className="px-4 py-3 font-semibold">{t('admin.columns.userEmail')}</th>
+                    <th className="px-4 py-3 font-semibold">{t('admin.columns.message')}</th>
+                    <th className="px-4 py-3 font-semibold">{t('admin.columns.dateSent')}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 bg-white text-slate-700">
+                  {isFeedbackLoading ? (
+                    <tr>
+                      <td className="px-4 py-8 text-center text-sm text-slate-500" colSpan={3}>
+                        {t('admin.feedback.loading')}
+                      </td>
+                    </tr>
+                  ) : feedbackMessages.length === 0 ? (
+                    <tr>
+                      <td className="px-4 py-8 text-center text-sm text-slate-500" colSpan={3}>
+                        {t('admin.feedback.empty')}
+                      </td>
+                    </tr>
+                  ) : (
+                    feedbackMessages.map((row) => (
+                      <tr key={row.key}>
+                        <td className="px-4 py-3 align-top font-medium text-slate-900">{row.user_email || '-'}</td>
+                        <td className="px-4 py-3 align-top whitespace-pre-wrap text-slate-700">{row.message || '-'}</td>
+                        <td className="px-4 py-3 align-top text-slate-600">
+                          {formatDateTime(row.date_sent, language)}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>

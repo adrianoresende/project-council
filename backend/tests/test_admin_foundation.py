@@ -243,5 +243,130 @@ class AdminUsersContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payload["credits"], 199999)
 
 
+class FeedbackContractsTests(unittest.IsolatedAsyncioTestCase):
+    async def test_submit_feedback_trims_message_and_returns_contract(self):
+        create_feedback_mock = AsyncMock(
+            return_value={
+                "user_email": "user@example.com",
+                "message": "Great app.",
+                "date_sent": "2026-03-02T12:00:00+00:00",
+            }
+        )
+        user = _build_supabase_user(
+            user_id="user-1",
+            email="User@Example.com",
+            role="user",
+        )
+
+        with patch(
+            "backend.main.storage.create_feedback_message",
+            new=create_feedback_mock,
+        ):
+            payload = await main.submit_feedback(
+                main.FeedbackRequest(message="  Great app.  "),
+                user=user,
+            )
+
+        create_feedback_mock.assert_awaited_once_with(
+            "user-1",
+            "user@example.com",
+            "Great app.",
+        )
+        self.assertEqual(payload["user_email"], "user@example.com")
+        self.assertEqual(payload["message"], "Great app.")
+        self.assertEqual(payload["date_sent"], "2026-03-02T12:00:00+00:00")
+
+    async def test_submit_feedback_rejects_blank_message(self):
+        user = _build_supabase_user(
+            user_id="user-1",
+            email="user@example.com",
+            role="user",
+        )
+
+        with self.assertRaises(HTTPException) as raised:
+            await main.submit_feedback(main.FeedbackRequest(message="   "), user=user)
+
+        self.assertEqual(raised.exception.status_code, 400)
+        self.assertEqual(raised.exception.detail, "Feedback message is required.")
+
+    async def test_submit_feedback_rejects_too_long_message(self):
+        user = _build_supabase_user(
+            user_id="user-1",
+            email="user@example.com",
+            role="user",
+        )
+        too_long = "a" * (main.FEEDBACK_MESSAGE_MAX_LENGTH + 1)
+
+        with self.assertRaises(HTTPException) as raised:
+            await main.submit_feedback(main.FeedbackRequest(message=too_long), user=user)
+
+        self.assertEqual(raised.exception.status_code, 400)
+        self.assertIn(str(main.FEEDBACK_MESSAGE_MAX_LENGTH), str(raised.exception.detail))
+
+    async def test_submit_feedback_rejects_missing_authenticated_email(self):
+        with self.assertRaises(HTTPException) as raised:
+            await main.submit_feedback(
+                main.FeedbackRequest(message="Helpful product."),
+                user={"id": "user-1", "app_metadata": {"role": "user"}},
+            )
+
+        self.assertEqual(raised.exception.status_code, 502)
+        self.assertEqual(
+            raised.exception.detail, "Authenticated user email unavailable."
+        )
+
+    async def test_get_admin_feedback_returns_storage_rows(self):
+        rows = [
+            {
+                "user_email": "user-2@example.com",
+                "message": "Second",
+                "date_sent": "2026-03-02T11:00:00+00:00",
+            },
+            {
+                "user_email": "user-1@example.com",
+                "message": "First",
+                "date_sent": "2026-03-02T10:00:00+00:00",
+            },
+        ]
+        list_feedback_mock = AsyncMock(return_value=rows)
+
+        with patch(
+            "backend.main.storage.list_feedback_messages",
+            new=list_feedback_mock,
+        ):
+            payload = await main.get_admin_feedback(limit=25, _={"id": "admin-1"})
+
+        list_feedback_mock.assert_awaited_once_with(25)
+        self.assertEqual(payload, rows)
+
+    async def test_get_admin_feedback_accepts_max_page_size_limit(self):
+        list_feedback_mock = AsyncMock(return_value=[])
+
+        with patch(
+            "backend.main.storage.list_feedback_messages",
+            new=list_feedback_mock,
+        ):
+            payload = await main.get_admin_feedback(
+                limit=main.ADMIN_FEEDBACK_MAX_LIMIT,
+                _={"id": "admin-1"},
+            )
+
+        list_feedback_mock.assert_awaited_once_with(main.ADMIN_FEEDBACK_MAX_LIMIT)
+        self.assertEqual(payload, [])
+
+    async def test_admin_authorization_blocks_feedback_listing_for_non_admin_role(self):
+        with self.assertRaises(HTTPException) as raised:
+            await main.get_current_admin_user(
+                user=_build_supabase_user(
+                    user_id="user-1",
+                    email="user@example.com",
+                    role="user",
+                )
+            )
+
+        self.assertEqual(raised.exception.status_code, 403)
+        self.assertEqual(raised.exception.detail, "Admin access required.")
+
+
 if __name__ == "__main__":
     unittest.main()

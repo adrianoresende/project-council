@@ -64,6 +64,10 @@ app = FastAPI(title="LLM Council API", debug=True)
 bearer_scheme = HTTPBearer()
 FREE_PLAN_LIMIT_ERROR_CODE = "FREE_DAILY_QUERY_LIMIT_REACHED"
 DEFAULT_DAILY_RESET_TIMEZONE = "UTC"
+FREE_WEB_SEARCH_MAX_RESULTS = 2
+PRO_WEB_SEARCH_MAX_RESULTS = 5
+FEEDBACK_MESSAGE_MAX_LENGTH = 4000
+ADMIN_FEEDBACK_MAX_LIMIT = 500
 
 # Configure CORS from backend config (dev localhost defaults, explicit production origins).
 app.add_middleware(
@@ -203,6 +207,20 @@ class BillingPaymentResponse(BaseModel):
     created_at: str
 
 
+class FeedbackRequest(BaseModel):
+    """Request payload for user feedback submission."""
+
+    message: str
+
+
+class FeedbackResponse(BaseModel):
+    """Feedback row payload used by submission and admin listing APIs."""
+
+    user_email: str
+    message: str
+    date_sent: str
+
+
 class ArchiveConversationRequest(BaseModel):
     """Request payload for updating archived state."""
 
@@ -253,6 +271,43 @@ def _normalize_plan(value: Any) -> str:
     return "free"
 
 
+def _is_truthy_header(value: Any) -> bool:
+    """Interpret common truthy header values."""
+    if isinstance(value, bool):
+        return value
+    if not isinstance(value, str):
+        return False
+    return value.strip().lower() in {"1", "true", "t", "yes", "y", "on"}
+
+
+def _build_model_plugins(
+    *,
+    needs_pdf_parser: bool,
+    enable_web_search: bool,
+    plan: str,
+) -> List[Dict[str, Any]] | None:
+    """Build plugin list for OpenRouter model requests."""
+    plugins: List[Dict[str, Any]] = []
+
+    if needs_pdf_parser:
+        plugins.extend(PDF_TEXT_PLUGIN)
+
+    if enable_web_search:
+        max_results = (
+            PRO_WEB_SEARCH_MAX_RESULTS
+            if _normalize_plan(plan) == "pro"
+            else FREE_WEB_SEARCH_MAX_RESULTS
+        )
+        plugins.append(
+            {
+                "id": "web",
+                "max_results": max_results,
+            }
+        )
+
+    return plugins or None
+
+
 def _get_user_plan(user: Dict[str, Any]) -> str:
     """Resolve current account plan from auth metadata."""
     user_metadata = user.get("user_metadata") or {}
@@ -300,6 +355,31 @@ def _normalize_admin_target_user_id(user_id: str) -> str:
     if not normalized:
         raise HTTPException(status_code=400, detail="User id is required.")
     return normalized
+
+
+def _normalize_feedback_message(message: str) -> str:
+    """Normalize feedback text while enforcing API and DB validation bounds."""
+    normalized = message.strip()
+    if not normalized:
+        raise HTTPException(status_code=400, detail="Feedback message is required.")
+
+    if len(normalized) > FEEDBACK_MESSAGE_MAX_LENGTH:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Feedback message must be at most {FEEDBACK_MESSAGE_MAX_LENGTH} characters."
+            ),
+        )
+    return normalized
+
+
+def _resolve_feedback_user_email(user: Dict[str, Any]) -> str:
+    """Resolve and validate authenticated email for feedback snapshots."""
+    email = user.get("email")
+    if isinstance(email, str) and email.strip():
+        return email.strip().lower()
+
+    raise HTTPException(status_code=502, detail="Authenticated user email unavailable.")
 
 
 def _build_admin_user_row(user: Dict[str, Any]) -> Dict[str, Any]:
@@ -1016,6 +1096,29 @@ async def get_account_payments(
     return await storage.list_billing_payments(user["id"], limit)
 
 
+@app.post("/api/feedback", response_model=FeedbackResponse)
+async def submit_feedback(
+    request: FeedbackRequest,
+    user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Persist feedback from the authenticated user."""
+    normalized_message = _normalize_feedback_message(request.message)
+    return await storage.create_feedback_message(
+        user["id"],
+        _resolve_feedback_user_email(user),
+        normalized_message,
+    )
+
+
+@app.get("/api/admin/feedback", response_model=List[FeedbackResponse])
+async def get_admin_feedback(
+    limit: int = Query(default=200, ge=1, le=ADMIN_FEEDBACK_MAX_LIMIT),
+    _: Dict[str, Any] = Depends(get_current_admin_user),
+):
+    """Return recent feedback messages for the admin feedback tab."""
+    return await storage.list_feedback_messages(limit)
+
+
 @app.get("/api/admin/users", response_model=List[AdminUserResponse])
 async def get_admin_users(_: Dict[str, Any] = Depends(get_current_admin_user)):
     """Return registered users for administrators, sorted by email ascending."""
@@ -1180,6 +1283,7 @@ async def send_message(
     conversation_id: str,
     http_request: Request,
     user_timezone: str | None = Header(default=None, alias="X-User-Timezone"),
+    web_search: str | None = Header(default=None, alias="X-Web-Search"),
     user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
@@ -1223,6 +1327,11 @@ async def send_message(
         await prepare_uploaded_files_for_model(incoming_files)
     )
     resolved_prompt = resolve_message_prompt(message_content, safe_user_files)
+    request_plugins = _build_model_plugins(
+        needs_pdf_parser=needs_pdf_parser,
+        enable_web_search=_is_truthy_header(web_search),
+        plan=plan,
+    )
     defer_first_message_persistence = plan == "free" and is_first_message
 
     if not defer_first_message_persistence:
@@ -1253,7 +1362,7 @@ async def send_message(
         session_id=conversation_session_id,
         openrouter_user=openrouter_user,
         user_attachments=attachment_parts,
-        plugins=PDF_TEXT_PLUGIN if needs_pdf_parser else None,
+        plugins=request_plugins,
         council_models=council_models,
     )
 
@@ -1324,7 +1433,7 @@ async def send_message(
             session_id=conversation_session_id,
             openrouter_user=openrouter_user,
             user_attachments=attachment_parts,
-            plugins=PDF_TEXT_PLUGIN if needs_pdf_parser else None,
+            plugins=request_plugins,
         )
         metadata = {
             "label_to_model": label_to_model,
@@ -1400,6 +1509,7 @@ async def send_message_stream(
     conversation_id: str,
     http_request: Request,
     user_timezone: str | None = Header(default=None, alias="X-User-Timezone"),
+    web_search: str | None = Header(default=None, alias="X-Web-Search"),
     user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
@@ -1443,6 +1553,11 @@ async def send_message_stream(
         await prepare_uploaded_files_for_model(incoming_files)
     )
     resolved_prompt = resolve_message_prompt(message_content, safe_user_files)
+    request_plugins = _build_model_plugins(
+        needs_pdf_parser=needs_pdf_parser,
+        enable_web_search=_is_truthy_header(web_search),
+        plan=plan,
+    )
 
     async def event_generator():
         remaining_balance_current = remaining_balance_after
@@ -1626,7 +1741,7 @@ async def send_message_stream(
                 session_id=conversation_session_id,
                 openrouter_user=openrouter_user,
                 user_attachments=attachment_parts,
-                plugins=PDF_TEXT_PLUGIN if needs_pdf_parser else None,
+                plugins=request_plugins,
                 council_models=council_models,
             )
 
@@ -1680,7 +1795,7 @@ async def send_message_stream(
                 session_id=conversation_session_id,
                 openrouter_user=openrouter_user,
                 user_attachments=attachment_parts,
-                plugins=PDF_TEXT_PLUGIN if needs_pdf_parser else None,
+                plugins=request_plugins,
             )
 
             if await http_request.is_disconnected():

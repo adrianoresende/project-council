@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   IconLogout2,
   IconMessagePlus,
+  IconX,
   IconShieldLock,
   IconUserCircle,
 } from "@tabler/icons-react";
@@ -34,7 +35,11 @@ export default function Sidebar({
   userEmail,
   userPlan,
   userRole,
+  onOpenFeedback,
   onLogout,
+  className = "",
+  showMobileCloseButton = false,
+  onCloseMobile,
 }) {
   const { language, t } = useI18n();
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
@@ -62,11 +67,25 @@ export default function Sidebar({
         : t("sidebar.queryLeftMany");
 
   return (
-    <aside className="flex h-screen w-[260px] flex-col border-r border-slate-200 bg-slate-50">
+    <aside
+      className={`flex h-full w-[260px] flex-col border-r border-slate-200 bg-slate-50 ${className}`.trim()}
+    >
       <div className="border-b border-slate-200 p-4">
-        <h1 className="mb-3 text-lg font-semibold text-slate-800">
-          {t("common.appName")}
-        </h1>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h1 className="text-lg font-semibold text-slate-800">
+            {t("common.appName")}
+          </h1>
+          {showMobileCloseButton && (
+            <button
+              type="button"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-600 transition-colors hover:border-slate-400 hover:text-slate-900"
+              aria-label={t("common.close")}
+              onClick={onCloseMobile}
+            >
+              <IconX size={15} />
+            </button>
+          )}
+        </div>
         <Tooltip
           className="w-full"
           content={createConversationDisabledReason}
@@ -191,6 +210,19 @@ export default function Sidebar({
               >
                 <IconUserCircle size={14} stroke={2} />
                 {t("sidebar.accountTab")}
+              </button>
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-100"
+                onClick={() => {
+                  if (typeof onOpenFeedback === "function") {
+                    onOpenFeedback();
+                  }
+                  setIsUserMenuOpen(false);
+                }}
+              >
+                <IconMessagePlus size={14} stroke={2} />
+                {t("sidebar.sendFeedbackButton")}
               </button>
               <button
                 type="button"
