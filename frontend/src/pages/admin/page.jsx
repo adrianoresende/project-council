@@ -347,7 +347,7 @@ export default function AdminPage() {
   }, [activeTab, loadFeedbackMessages, loadSystemModels, loadUsers]);
 
   return (
-    <div className="relative h-screen flex-1 overflow-y-auto bg-slate-50">
+    <div className="relative h-full flex-1 overflow-y-auto bg-slate-50">
       <div className="mx-auto max-w-[1100px] px-6 pb-12 pt-10">
         <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
           <div>

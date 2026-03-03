@@ -61,6 +61,7 @@ export const translations = {
       queryLeftMany: "queries left",
       upgradeButton: "Upgrade",
       adminTab: "Admin",
+      openMenu: "Open menu",
       sendFeedbackButton: "Send feedback",
     },
     feedback: {
@@ -68,7 +69,8 @@ export const translations = {
       description:
         "Your feedback is very important to help us deliver the best possible experience.",
       messageLabel: "Your message.",
-      messagePlaceholder: "Tell us what is working well or what we can improve.",
+      messagePlaceholder:
+        "Tell us what is working well or what we can improve.",
       submitButton: "Send feedback",
       submittingButton: "Sending...",
       successTitle: "Thank you for your feedback!",
@@ -229,7 +231,8 @@ export const translations = {
         renewTokens: "Renew daily token quota",
         renewingQuota: "Renewing...",
         quotaRenewed: "Quota renewed.",
-        quotaRenewedWithAmount: "Quota renewed: {{credits}} {{unit}} available.",
+        quotaRenewedWithAmount:
+          "Quota renewed: {{credits}} {{unit}} available.",
         failedRenewQuota: "Failed to renew user quota.",
       },
     },
@@ -310,6 +313,7 @@ export const translations = {
       queryLeftMany: "consultas restantes",
       upgradeButton: "Mejorar",
       adminTab: "Admin",
+      openMenu: "Abrir menú",
       sendFeedbackButton: "Enviar comentarios",
     },
     feedback: {
@@ -486,7 +490,8 @@ export const translations = {
         renewTokens: "Renovar cuota diaria de tokens",
         renewingQuota: "Renovando...",
         quotaRenewed: "Cuota renovada.",
-        quotaRenewedWithAmount: "Cuota renovada: {{credits}} {{unit}} disponibles.",
+        quotaRenewedWithAmount:
+          "Cuota renovada: {{credits}} {{unit}} disponibles.",
         failedRenewQuota: "No se pudo renovar la cuota del usuario.",
       },
     },
@@ -567,6 +572,7 @@ export const translations = {
       queryLeftMany: "consultas restantes",
       upgradeButton: "Fazer upgrade",
       adminTab: "Admin",
+      openMenu: "Abrir menu",
       sendFeedbackButton: "Enviar feedback",
     },
     feedback: {
@@ -743,7 +749,8 @@ export const translations = {
         renewTokens: "Renovar cota diária de tokens",
         renewingQuota: "Renovando...",
         quotaRenewed: "Cota renovada.",
-        quotaRenewedWithAmount: "Cota renovada: {{credits}} {{unit}} disponíveis.",
+        quotaRenewedWithAmount:
+          "Cota renovada: {{credits}} {{unit}} disponíveis.",
         failedRenewQuota: "Falha ao renovar cota do usuário.",
       },
     },

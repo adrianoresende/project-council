@@ -128,7 +128,7 @@ export default function PricingPage() {
   };
 
   return (
-    <div className="h-screen flex-1 overflow-y-auto bg-gradient-to-br from-blue-50 via-sky-50 to-emerald-50">
+    <div className="h-full flex-1 overflow-y-auto bg-gradient-to-br from-blue-50 via-sky-50 to-emerald-50">
       <div className="mx-auto max-w-[960px] px-6 pb-14 pt-10">
         <h1 className="text-[34px] text-slate-900">{t('pricing.title')}</h1>
         <p className="mb-6 mt-2 text-[15px] text-slate-600">{t('pricing.subtitle')}</p>

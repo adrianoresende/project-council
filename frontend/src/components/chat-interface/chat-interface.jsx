@@ -321,7 +321,7 @@ export default function ChatInterface({
   };
 
   return (
-    <div className="flex h-screen flex-1 bg-white">
+    <div className="flex h-full flex-1 bg-white">
       <div className="min-w-0 max-w-4xl mx-auto flex flex-1 flex-col px-6">
         <div className="flex-1 overflow-y-auto py-6 px-12">
           {conversationMessages.map((msg, index) => {
