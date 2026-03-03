@@ -68,7 +68,7 @@ export default function Sidebar({
 
   return (
     <aside
-      className={`flex h-screen w-[260px] flex-col border-r border-slate-200 bg-slate-50 ${className}`.trim()}
+      className={`flex h-full w-[260px] flex-col border-r border-slate-200 bg-slate-50 ${className}`.trim()}
     >
       <div className="border-b border-slate-200 p-4">
         <div className="mb-3 flex items-center justify-between gap-3">
