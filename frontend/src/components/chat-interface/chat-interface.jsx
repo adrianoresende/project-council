@@ -322,8 +322,8 @@ export default function ChatInterface({
 
   return (
     <div className="flex h-full flex-1 bg-white">
-      <div className="min-w-0 max-w-4xl mx-auto flex flex-1 flex-col px-6">
-        <div className="flex-1 overflow-y-auto py-6 px-12">
+      <div className="mx-auto flex min-w-0 max-w-4xl flex-1 flex-col px-0 sm:px-6">
+        <div className="flex-1 overflow-y-auto px-0 py-6 sm:px-6 lg:px-12">
           {conversationMessages.map((msg, index) => {
             const finalResponse = msg.stage3?.response || msg.content || "";
             const userFiles = Array.isArray(msg.files) ? msg.files : [];
