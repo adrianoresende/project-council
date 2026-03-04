@@ -116,15 +116,15 @@ export default function ChatPage({
           />
           <Sidebar
             mainView={mainView}
-            onChangeMainView={onChangeMainView}
+            onChangeMainView={handleChangeMainView}
             conversations={conversations}
             isConversationsLoading={isConversationsLoading}
             conversationListTab={conversationListTab}
             onChangeConversationTab={onChangeConversationTab}
             onArchiveConversation={onArchiveConversation}
             currentConversationId={currentConversationId}
-            onSelectConversation={onSelectConversation}
-            onNewConversation={onNewConversation}
+            onSelectConversation={handleSelectConversation}
+            onNewConversation={handleNewConversation}
             canCreateConversation={canCreateConversation}
             createConversationDisabledReason={createConversationDisabledReason}
             credits={credits}
@@ -133,7 +133,7 @@ export default function ChatPage({
             userPlan={userPlan}
             userRole={userRole}
             onOpenFeedback={() => setIsFeedbackModalOpen(true)}
-            onLogout={onLogout}
+            onLogout={handleLogout}
             className="fixed inset-y-0 left-0 z-40 w-[min(86vw,320px)] max-w-none shadow-[0_14px_30px_rgba(15,23,42,0.2)] lg:hidden"
             showMobileCloseButton
             onCloseMobile={closeMobileSidebar}

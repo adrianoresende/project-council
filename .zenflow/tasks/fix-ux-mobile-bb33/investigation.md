@@ -47,3 +47,20 @@
 
 ## Error messages and logs
 - No runtime error messages or backend logs are required to reproduce; this is a frontend event-wiring bug.
+
+## Implementation notes
+- Updated mobile `<Sidebar />` wiring in `frontend/src/pages/home/page.jsx` to use the close-and-forward handlers already defined in `ChatPage`:
+  - `onChangeMainView={handleChangeMainView}`
+  - `onSelectConversation={handleSelectConversation}`
+  - `onNewConversation={handleNewConversation}`
+  - `onLogout={handleLogout}`
+- Added regression coverage in `frontend/src/pages/home/page.test.jsx`:
+  - Opens mobile sidebar.
+  - Clicks a conversation inside the mobile sidebar.
+  - Verifies `onSelectConversation` is called with the selected id.
+  - Verifies mobile sidebar close button is removed, confirming sidebar closes.
+
+## Test results
+- Command: `npm test -- src/pages/home/page.test.jsx` (run in `frontend/`)
+- Result: passed
+  - `src/pages/home/page.test.jsx` → `1 passed`
