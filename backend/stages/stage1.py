@@ -3,7 +3,7 @@
 from typing import Any, Dict, List
 
 from ..config import COUNCIL_MODELS
-from ..openrouter import query_models_parallel
+from ..services.openrouter.client import query_models_parallel
 from .shared import empty_usage_summary
 
 

@@ -117,7 +117,7 @@ create policy conversations_owner_select
   on public.conversations
   for select
   to authenticated
-  using (auth.uid() = user_id);
+  using ((select auth.uid()) = user_id);
 
 create policy conversations_owner_insert
   on public.conversations

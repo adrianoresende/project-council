@@ -2,7 +2,7 @@
 
 from typing import Any, Dict
 
-from ..openrouter import query_model
+from ..services.openrouter.client import query_model
 from .shared import empty_usage_summary
 
 

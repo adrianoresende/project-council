@@ -5,60 +5,18 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import json
 
-import httpx
-
-from .config import SUPABASE_SECRET_KEY, SUPABASE_URL
+from ...utils import coerce_float as _to_float
+from ...utils import coerce_int as _to_int
+from ...utils import normalize_plan
+from ...utils import normalize_session_id as _normalize_session_id
+from ...utils import now_utc as _now_utc
+from ...utils import parse_iso_datetime as _parse_iso_datetime
+from .rest import ensure_supabase_db_config
+from .rest import extract_db_error_message
+from .rest import rest_request
 
 
 USER_MESSAGE_PAYLOAD_PREFIX = "__llm_council_user_message_v1__:"
-
-
-def _to_int(value: Any) -> int:
-    """Best-effort integer conversion."""
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return 0
-
-
-def _to_float(value: Any) -> float | None:
-    """Best-effort float conversion."""
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _to_iso_datetime(value: Any) -> str | None:
-    """Best-effort conversion to ISO datetime in UTC."""
-    if isinstance(value, str) and value.strip():
-        return value.strip()
-
-    timestamp = _to_int(value)
-    if timestamp <= 0:
-        return None
-    return datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat()
-
-
-def _parse_iso_datetime(value: Any) -> datetime | None:
-    """Best-effort parse for ISO datetime values."""
-    if not isinstance(value, str) or not value.strip():
-        return None
-    raw_value = value.strip()
-    if raw_value.endswith("Z"):
-        raw_value = f"{raw_value[:-1]}+00:00"
-    try:
-        parsed = datetime.fromisoformat(raw_value)
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
-
-
-def _now_utc() -> datetime:
-    """Return current UTC time (wrapper to simplify deterministic tests)."""
-    return datetime.now(timezone.utc)
 
 
 def _resolve_daily_reset_timezone(timezone_name: str | None):
@@ -72,16 +30,6 @@ def _resolve_daily_reset_timezone(timezone_name: str | None):
         return ZoneInfo(normalized)
     except ZoneInfoNotFoundError:
         return timezone.utc
-
-
-def _normalize_session_id(value: Any) -> str | None:
-    """Best-effort normalization for conversation session identifiers."""
-    if not isinstance(value, str):
-        return None
-    normalized = value.strip()
-    if not normalized:
-        return None
-    return normalized[:128]
 
 
 def _normalize_user_files_payload(value: Any) -> List[Dict[str, Any]]:
@@ -264,7 +212,7 @@ def _build_stage_metadata(stage1: Any, stage2: Any, usage: Dict[str, Any]) -> Di
             continue
         normalized_stage2.append(item)
 
-    from .council import calculate_aggregate_rankings
+    from ...council import calculate_aggregate_rankings
 
     metadata["label_to_model"] = label_to_model
     metadata["aggregate_rankings"] = calculate_aggregate_rankings(
@@ -274,29 +222,13 @@ def _build_stage_metadata(stage1: Any, stage2: Any, usage: Dict[str, Any]) -> Di
 
 
 def _ensure_supabase_db_config() -> tuple[str, str]:
-    """Return validated Supabase REST config values."""
-    if not SUPABASE_URL:
-        raise RuntimeError(
-            "Supabase DB is not configured. Missing SUPABASE_URL (or SUPABASE_PROJECT_URL)."
-        )
-    if not SUPABASE_SECRET_KEY:
-        raise RuntimeError(
-            "Supabase DB is not configured. Missing SUPABASE_API_KEY_SECRET "
-            "(or SUPABASE_SERVICE_ROLE_KEY)."
-        )
-    return SUPABASE_URL.rstrip("/"), SUPABASE_SECRET_KEY
+    """Compatibility wrapper for shared Supabase DB config validation."""
+    return ensure_supabase_db_config()
 
 
 def _extract_error_message(payload: Any, fallback: str) -> str:
-    """Extract readable error messages from PostgREST payloads."""
-    if isinstance(payload, dict):
-        return (
-            payload.get("message")
-            or payload.get("hint")
-            or payload.get("details")
-            or fallback
-        )
-    return fallback
+    """Compatibility wrapper for shared PostgREST error extraction."""
+    return extract_db_error_message(payload, fallback)
 
 
 async def _rest_request(
@@ -307,44 +239,14 @@ async def _rest_request(
     json_body: Optional[Dict[str, Any]] = None,
     prefer: Optional[str] = None,
 ):
-    """Make an authenticated request to Supabase PostgREST."""
-    supabase_url, api_key = _ensure_supabase_db_config()
-    url = f"{supabase_url}/rest/v1/{resource}"
-
-    headers: Dict[str, str] = {
-        "apikey": api_key,
-        "Authorization": f"Bearer {api_key}",
-    }
-    if json_body is not None:
-        headers["Content-Type"] = "application/json"
-    if prefer:
-        headers["Prefer"] = prefer
-
-    async with httpx.AsyncClient(timeout=20) as client:
-        response = await client.request(
-            method=method,
-            url=url,
-            params=params,
-            json=json_body,
-            headers=headers,
-        )
-
-    if response.status_code >= 400:
-        try:
-            payload = response.json()
-        except ValueError:
-            payload = None
-        raise RuntimeError(
-            _extract_error_message(payload, f"Database request failed ({response.status_code}).")
-        )
-
-    if not response.content:
-        return None
-
-    try:
-        return response.json()
-    except ValueError:
-        return None
+    """Compatibility wrapper around shared PostgREST request helper."""
+    return await rest_request(
+        method,
+        resource,
+        params=params,
+        json_body=json_body,
+        prefer=prefer,
+    )
 
 
 async def _get_conversation_row(
@@ -631,27 +533,6 @@ async def update_conversation_archived(
     )
 
 
-def _parse_credit_result(result: Any) -> int:
-    """Normalize RPC credit result payloads into an integer."""
-    if isinstance(result, int):
-        return result
-
-    if isinstance(result, dict):
-        for key in ("credits", "get_account_credits", "add_account_credits", "consume_account_credit"):
-            value = result.get(key)
-            if isinstance(value, int):
-                return value
-
-    if isinstance(result, list) and result:
-        first = result[0]
-        if isinstance(first, int):
-            return first
-        if isinstance(first, dict):
-            return _parse_credit_result(first)
-
-    raise RuntimeError("Unexpected credit response from database.")
-
-
 async def _ensure_credit_account(user_id: str, initial_credits: int = 0):
     """Ensure a credit row exists for the user without overwriting current balance."""
     await _rest_request(
@@ -758,56 +639,6 @@ async def consume_account_tokens(
     return next_remaining
 
 
-async def get_account_credits(user_id: str) -> int:
-    """Return the current credit balance for a user."""
-    await _ensure_credit_account(user_id)
-    rows = await _rest_request(
-        "GET",
-        "account_credits",
-        params={
-            "select": "credits",
-            "user_id": f"eq.{user_id}",
-            "limit": "1",
-        },
-    )
-    if not rows:
-        return 0
-    return int(rows[0].get("credits", 0))
-
-
-async def add_account_credits(user_id: str, amount: int) -> int:
-    """Add credits to a user account and return updated balance."""
-    if amount <= 0:
-        raise ValueError("Credit amount must be greater than zero.")
-
-    result = await _rest_request(
-        "POST",
-        "rpc/add_account_credits",
-        json_body={
-            "p_user_id": user_id,
-            "p_amount": amount,
-        },
-    )
-    return _parse_credit_result(result)
-
-
-async def consume_account_credit(user_id: str) -> int:
-    """Consume one credit from a user account and return remaining balance."""
-    try:
-        result = await _rest_request(
-            "POST",
-            "rpc/consume_account_credit",
-            json_body={"p_user_id": user_id},
-        )
-        return _parse_credit_result(result)
-    except RuntimeError as error:
-        if "INSUFFICIENT_CREDITS" in str(error):
-            raise ValueError(
-                "Insufficient credits. Add credits to send a message."
-            ) from error
-        raise
-
-
 async def upsert_billing_payment(
     user_id: str,
     checkout_session: Dict[str, Any],
@@ -851,12 +682,7 @@ async def upsert_billing_payment(
     metadata = checkout_session.get("metadata") or {}
     if not isinstance(metadata, dict):
         metadata = {}
-    plan = metadata.get("plan")
-    if not isinstance(plan, str) or not plan.strip():
-        plan = "free"
-    normalized_plan = plan.strip().lower()
-    if normalized_plan not in {"free", "pro"}:
-        normalized_plan = "free"
+    normalized_plan = normalize_plan(metadata.get("plan"))
 
     amount_total = _to_int(checkout_session.get("amount_total"))
     checkout_status = checkout_session.get("status")

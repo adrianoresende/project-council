@@ -3,7 +3,8 @@
 import unittest
 from unittest.mock import AsyncMock, patch
 
-from backend import main, openrouter
+from backend import main
+from backend.services.openrouter import client as openrouter
 
 
 class _RequestStub:
@@ -53,7 +54,10 @@ class OpenRouterPayloadTests(unittest.IsolatedAsyncioTestCase):
                 captured["json"] = json
                 return _FakeResponse()
 
-        with patch("backend.openrouter.httpx.AsyncClient", new=FakeAsyncClient):
+        with patch(
+            "backend.services.openrouter.client.httpx.AsyncClient",
+            new=FakeAsyncClient,
+        ):
             result = await openrouter.query_model(
                 "openai/gpt-5.1",
                 [{"role": "user", "content": "Hello"}],
@@ -80,7 +84,10 @@ class OpenRouterPayloadTests(unittest.IsolatedAsyncioTestCase):
                 captured["json"] = json
                 return _FakeResponse()
 
-        with patch("backend.openrouter.httpx.AsyncClient", new=FakeAsyncClient):
+        with patch(
+            "backend.services.openrouter.client.httpx.AsyncClient",
+            new=FakeAsyncClient,
+        ):
             await openrouter.query_model(
                 "openai/gpt-5.1",
                 [{"role": "user", "content": "Hello"}],
@@ -98,7 +105,10 @@ class OpenRouterPayloadTests(unittest.IsolatedAsyncioTestCase):
             }
         )
 
-        with patch("backend.openrouter.query_model", new=query_model_mock):
+        with patch(
+            "backend.services.openrouter.client.query_model",
+            new=query_model_mock,
+        ):
             responses = await openrouter.query_models_parallel(
                 ["m1", "m2"],
                 [{"role": "user", "content": "Hello"}],

@@ -1,6 +1,7 @@
 """Configuration for the LLM Council."""
 
 import os
+import warnings
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -66,8 +67,18 @@ def _parse_cors_origins(raw_origins: str | None) -> list[str]:
 
 
 def resolve_council_env_prefix(environment: str) -> str:
-    """Map resolved runtime environment to env var prefix."""
-    if environment in DEVELOPMENT_ENV_NAMES:
+    """Deprecated compatibility alias for env-prefix resolution."""
+    warnings.warn(
+        "resolve_council_env_prefix is deprecated; compare with DEVELOPMENT_ENV_NAMES directly.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    normalized_environment = (
+        _strip_wrapping_quotes(environment).lower()
+        if isinstance(environment, str)
+        else ""
+    )
+    if normalized_environment in DEVELOPMENT_ENV_NAMES:
         return "DEVELOPMENT"
     return "PRODUCTION"
 
@@ -76,25 +87,13 @@ def _parse_council_models(
     raw_models: str | None,
     fallback_models: list[str],
 ) -> list[str]:
-    """Parse a comma-separated model list with fallback."""
-    if not raw_models:
-        return list(fallback_models)
-
-    normalized_models_value = _strip_wrapping_quotes(raw_models)
-    if not normalized_models_value:
-        return list(fallback_models)
-
-    parsed_models: list[str] = []
-    seen_models: set[str] = set()
-    for model in normalized_models_value.split(","):
-        normalized_model = _strip_wrapping_quotes(model)
-        if not normalized_model:
-            continue
-        if normalized_model in seen_models:
-            continue
-        parsed_models.append(normalized_model)
-        seen_models.add(normalized_model)
-
+    """Deprecated compatibility alias for model list parsing with fallback."""
+    warnings.warn(
+        "_parse_council_models is deprecated; use _parse_council_model_list instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    parsed_models = _parse_council_model_list(raw_models)
     if parsed_models:
         return parsed_models
     return list(fallback_models)
