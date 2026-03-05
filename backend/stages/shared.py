@@ -2,21 +2,8 @@
 
 from typing import Any, Dict, List
 
-
-def _to_int(value: Any) -> int:
-    """Best-effort integer conversion."""
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return 0
-
-
-def _to_float(value: Any) -> float | None:
-    """Best-effort float conversion."""
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
+from ..utils import coerce_float as _to_float
+from ..utils import coerce_int as _to_int
 
 
 def empty_usage_summary() -> Dict[str, Any]:

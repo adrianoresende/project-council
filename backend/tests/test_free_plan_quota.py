@@ -6,7 +6,8 @@ from unittest.mock import AsyncMock, Mock, call, patch
 
 from fastapi import HTTPException
 
-from backend import main, storage
+from backend import main
+from backend.services.supabase import storage
 
 
 class StorageDailyQuotaTimezoneTests(unittest.IsolatedAsyncioTestCase):
@@ -20,10 +21,19 @@ class StorageDailyQuotaTimezoneTests(unittest.IsolatedAsyncioTestCase):
         }
 
         with (
-            patch("backend.storage._now_utc", return_value=now_utc),
-            patch("backend.storage._ensure_credit_account", new=AsyncMock()),
-            patch("backend.storage._get_credit_row", new=AsyncMock(return_value=row)),
-            patch("backend.storage._set_credit_row", new=AsyncMock()) as set_credit_row_mock,
+            patch("backend.services.supabase.storage._now_utc", return_value=now_utc),
+            patch(
+                "backend.services.supabase.storage._ensure_credit_account",
+                new=AsyncMock(),
+            ),
+            patch(
+                "backend.services.supabase.storage._get_credit_row",
+                new=AsyncMock(return_value=row),
+            ),
+            patch(
+                "backend.services.supabase.storage._set_credit_row",
+                new=AsyncMock(),
+            ) as set_credit_row_mock,
         ):
             remaining = await storage.get_account_daily_credits(
                 "user-1",
@@ -44,10 +54,19 @@ class StorageDailyQuotaTimezoneTests(unittest.IsolatedAsyncioTestCase):
         }
 
         with (
-            patch("backend.storage._now_utc", return_value=now_utc),
-            patch("backend.storage._ensure_credit_account", new=AsyncMock()),
-            patch("backend.storage._get_credit_row", new=AsyncMock(return_value=row)),
-            patch("backend.storage._set_credit_row", new=AsyncMock()) as set_credit_row_mock,
+            patch("backend.services.supabase.storage._now_utc", return_value=now_utc),
+            patch(
+                "backend.services.supabase.storage._ensure_credit_account",
+                new=AsyncMock(),
+            ),
+            patch(
+                "backend.services.supabase.storage._get_credit_row",
+                new=AsyncMock(return_value=row),
+            ),
+            patch(
+                "backend.services.supabase.storage._set_credit_row",
+                new=AsyncMock(),
+            ) as set_credit_row_mock,
         ):
             remaining = await storage.get_account_daily_credits(
                 "user-1",

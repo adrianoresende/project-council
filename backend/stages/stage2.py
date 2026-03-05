@@ -5,7 +5,7 @@ from collections import defaultdict
 from typing import Any, Dict, List, Tuple
 
 from ..config import COUNCIL_MODELS
-from ..openrouter import query_models_parallel
+from ..services.openrouter.client import query_models_parallel
 from .shared import empty_usage_summary, history_to_context_text
 
 

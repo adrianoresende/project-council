@@ -3,23 +3,10 @@
 import asyncio
 import httpx
 from typing import List, Dict, Any, Optional
-from .config import OPENROUTER_API_KEY, OPENROUTER_API_URL
-
-
-def _to_int(value: Any) -> int:
-    """Convert a value to int, returning 0 when conversion is not possible."""
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return 0
-
-
-def _to_float(value: Any) -> Optional[float]:
-    """Convert a value to float, returning None when conversion is not possible."""
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
+from ...config import OPENROUTER_API_KEY, OPENROUTER_API_URL
+from ...utils import coerce_float as _to_float
+from ...utils import coerce_int as _to_int
+from ...utils import normalize_session_id
 
 
 def _normalize_usage(raw_usage: Any) -> Dict[str, Any]:
@@ -83,11 +70,7 @@ async def query_model(
         "model": model,
         "messages": messages,
     }
-    normalized_session_id = (
-        session_id.strip()[:128]
-        if isinstance(session_id, str) and session_id.strip()
-        else None
-    )
+    normalized_session_id = normalize_session_id(session_id)
     normalized_openrouter_user = (
         openrouter_user.strip()
         if isinstance(openrouter_user, str) and openrouter_user.strip()

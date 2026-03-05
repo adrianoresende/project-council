@@ -1,5 +1,6 @@
 """LLM Council orchestration facade."""
 
+import warnings
 from typing import Any, Dict, List, Tuple
 
 from .stages import (
@@ -21,7 +22,7 @@ async def run_full_council(
     openrouter_user: str | None = None,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], Dict[str, Any], Dict[str, Any]]:
     """
-    Run the complete 3-stage council process.
+    Deprecated compatibility helper for the full 3-stage council process.
 
     Args:
         user_query: The user's question.
@@ -30,6 +31,12 @@ async def run_full_council(
     Returns:
         Tuple of (stage1_results, stage2_results, stage3_result, metadata).
     """
+    warnings.warn(
+        "run_full_council is deprecated; call stage modules directly.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+
     stage1_results = await stage1_collect_responses(
         user_query,
         conversation_history=conversation_history,
