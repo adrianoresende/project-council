@@ -446,6 +446,7 @@ class FreePlanQuotaEndpointTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_send_message_routes_free_plan_through_free_council_models(self):
         selected_models = ["openai/gpt-oss-120b", "google/gemini-2.0-flash"]
+        selected_chairman = "openai/gpt-5-nano"
         stage1_mock = AsyncMock(
             return_value=[
                 {
@@ -456,6 +457,13 @@ class FreePlanQuotaEndpointTests(unittest.IsolatedAsyncioTestCase):
             ]
         )
         stage2_mock = AsyncMock(return_value=([], {}))
+        stage3_mock = AsyncMock(
+            return_value={
+                "model": "openai/gpt-oss-120b",
+                "response": "final",
+                "usage": main.empty_usage_summary(),
+            }
+        )
 
         with (
             patch(
@@ -480,22 +488,17 @@ class FreePlanQuotaEndpointTests(unittest.IsolatedAsyncioTestCase):
             patch("backend.main.storage.add_user_message", new=AsyncMock()),
             patch("backend.main.stage1_collect_responses", new=stage1_mock),
             patch("backend.main.stage2_collect_rankings", new=stage2_mock),
-            patch(
-                "backend.main.stage3_synthesize_final",
-                new=AsyncMock(
-                    return_value={
-                        "model": "openai/gpt-oss-120b",
-                        "response": "final",
-                        "usage": main.empty_usage_summary(),
-                    }
-                ),
-            ),
+            patch("backend.main.stage3_synthesize_final", new=stage3_mock),
             patch("backend.main.storage.add_assistant_message", new=AsyncMock()),
             patch("backend.main.storage.get_conversation", new=AsyncMock(return_value={})),
             patch(
                 "backend.main.get_council_models_for_plan",
                 return_value=selected_models,
             ) as resolve_models_mock,
+            patch(
+                "backend.main.get_chairman_model_for_plan",
+                return_value=selected_chairman,
+            ) as resolve_chairman_mock,
         ):
             await main.send_message(
                 conversation_id="conv-1",
@@ -505,11 +508,17 @@ class FreePlanQuotaEndpointTests(unittest.IsolatedAsyncioTestCase):
             )
 
         resolve_models_mock.assert_called_once_with("free")
+        resolve_chairman_mock.assert_called_once_with("free")
         self.assertEqual(stage1_mock.await_args.kwargs.get("council_models"), selected_models)
         self.assertEqual(stage2_mock.await_args.kwargs.get("council_models"), selected_models)
+        self.assertEqual(
+            stage3_mock.await_args.kwargs.get("chairman_model"),
+            selected_chairman,
+        )
 
     async def test_send_message_routes_pro_plan_through_pro_council_models(self):
         selected_models = ["openai/gpt-5-nano", "google/gemini-2.5-flash-lite"]
+        selected_chairman = "google/gemini-3-pro-preview"
         stage1_mock = AsyncMock(
             return_value=[
                 {
@@ -520,6 +529,13 @@ class FreePlanQuotaEndpointTests(unittest.IsolatedAsyncioTestCase):
             ]
         )
         stage2_mock = AsyncMock(return_value=([], {}))
+        stage3_mock = AsyncMock(
+            return_value={
+                "model": "openai/gpt-5-nano",
+                "response": "final",
+                "usage": main.empty_usage_summary(),
+            }
+        )
         consume_mock = AsyncMock(return_value=199999)
 
         with (
@@ -545,16 +561,7 @@ class FreePlanQuotaEndpointTests(unittest.IsolatedAsyncioTestCase):
             patch("backend.main.storage.add_user_message", new=AsyncMock()),
             patch("backend.main.stage1_collect_responses", new=stage1_mock),
             patch("backend.main.stage2_collect_rankings", new=stage2_mock),
-            patch(
-                "backend.main.stage3_synthesize_final",
-                new=AsyncMock(
-                    return_value={
-                        "model": "openai/gpt-5-nano",
-                        "response": "final",
-                        "usage": main.empty_usage_summary(),
-                    }
-                ),
-            ),
+            patch("backend.main.stage3_synthesize_final", new=stage3_mock),
             patch("backend.main.storage.consume_account_tokens", new=consume_mock),
             patch("backend.main.storage.add_assistant_message", new=AsyncMock()),
             patch("backend.main.storage.get_conversation", new=AsyncMock(return_value={})),
@@ -562,6 +569,10 @@ class FreePlanQuotaEndpointTests(unittest.IsolatedAsyncioTestCase):
                 "backend.main.get_council_models_for_plan",
                 return_value=selected_models,
             ) as resolve_models_mock,
+            patch(
+                "backend.main.get_chairman_model_for_plan",
+                return_value=selected_chairman,
+            ) as resolve_chairman_mock,
         ):
             await main.send_message(
                 conversation_id="conv-1",
@@ -571,12 +582,18 @@ class FreePlanQuotaEndpointTests(unittest.IsolatedAsyncioTestCase):
             )
 
         resolve_models_mock.assert_called_once_with("pro")
+        resolve_chairman_mock.assert_called_once_with("pro")
         self.assertEqual(stage1_mock.await_args.kwargs.get("council_models"), selected_models)
         self.assertEqual(stage2_mock.await_args.kwargs.get("council_models"), selected_models)
+        self.assertEqual(
+            stage3_mock.await_args.kwargs.get("chairman_model"),
+            selected_chairman,
+        )
         consume_mock.assert_awaited_once()
 
     async def test_send_message_stream_routes_free_plan_through_free_council_models(self):
         selected_models = ["openai/gpt-oss-120b", "google/gemini-2.0-flash"]
+        selected_chairman = "openai/gpt-5-nano"
         stage1_mock = AsyncMock(
             return_value=[
                 {
@@ -587,6 +604,13 @@ class FreePlanQuotaEndpointTests(unittest.IsolatedAsyncioTestCase):
             ]
         )
         stage2_mock = AsyncMock(return_value=([], {}))
+        stage3_mock = AsyncMock(
+            return_value={
+                "model": "openai/gpt-oss-120b",
+                "response": "final",
+                "usage": main.empty_usage_summary(),
+            }
+        )
 
         with (
             patch(
@@ -611,22 +635,17 @@ class FreePlanQuotaEndpointTests(unittest.IsolatedAsyncioTestCase):
             patch("backend.main.storage.add_user_message", new=AsyncMock()),
             patch("backend.main.stage1_collect_responses", new=stage1_mock),
             patch("backend.main.stage2_collect_rankings", new=stage2_mock),
-            patch(
-                "backend.main.stage3_synthesize_final",
-                new=AsyncMock(
-                    return_value={
-                        "model": "openai/gpt-oss-120b",
-                        "response": "final",
-                        "usage": main.empty_usage_summary(),
-                    }
-                ),
-            ),
+            patch("backend.main.stage3_synthesize_final", new=stage3_mock),
             patch("backend.main.storage.add_assistant_message", new=AsyncMock()),
             patch("backend.main.storage.get_conversation", new=AsyncMock(return_value={})),
             patch(
                 "backend.main.get_council_models_for_plan",
                 return_value=selected_models,
             ) as resolve_models_mock,
+            patch(
+                "backend.main.get_chairman_model_for_plan",
+                return_value=selected_chairman,
+            ) as resolve_chairman_mock,
         ):
             response = await main.send_message_stream(
                 conversation_id="conv-1",
@@ -638,8 +657,13 @@ class FreePlanQuotaEndpointTests(unittest.IsolatedAsyncioTestCase):
                 pass
 
         resolve_models_mock.assert_called_once_with("free")
+        resolve_chairman_mock.assert_called_once_with("free")
         self.assertEqual(stage1_mock.await_args.kwargs.get("council_models"), selected_models)
         self.assertEqual(stage2_mock.await_args.kwargs.get("council_models"), selected_models)
+        self.assertEqual(
+            stage3_mock.await_args.kwargs.get("chairman_model"),
+            selected_chairman,
+        )
 
 
 if __name__ == "__main__":

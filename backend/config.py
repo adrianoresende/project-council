@@ -171,6 +171,23 @@ def resolve_production_council_models(
     )
 
 
+def _default_chairman_model_for_environment(environment: str) -> str:
+    """Return default chairman model for the resolved environment."""
+    if environment in DEVELOPMENT_ENV_NAMES:
+        return "openai/gpt-5-nano"
+    return "google/gemini-3-pro-preview"
+
+
+def _resolve_chairman_model(
+    raw_model: str | None,
+    fallback_model: str,
+) -> str:
+    """Resolve a single chairman model value with fallback."""
+    normalized_fallback = _strip_wrapping_quotes(fallback_model)
+    normalized_model = _strip_wrapping_quotes(raw_model) if raw_model else ""
+    return normalized_model or normalized_fallback
+
+
 COUNCIL_ENV = resolve_council_env(
     os.getenv("COUNCIL_ENV"),
     os.getenv("APP_ENV"),
@@ -257,13 +274,46 @@ PRODUCTION_COUNCIL_MODELS = list(PRODUCTION_PRO_COUNCIL_MODELS)
 
 if COUNCIL_ENV in DEVELOPMENT_ENV_NAMES:
     COUNCIL_MODELS = list(DEVELOPMENT_COUNCIL_MODELS)
-    DEFAULT_CHAIRMAN_MODEL = "openai/gpt-5-nano"
 else:
     COUNCIL_MODELS = list(PRODUCTION_COUNCIL_MODELS)
-    DEFAULT_CHAIRMAN_MODEL = "google/gemini-3-pro-preview"
+DEFAULT_CHAIRMAN_MODEL = _default_chairman_model_for_environment(COUNCIL_ENV)
 
 # Chairman model - synthesizes final response
-CHAIRMAN_MODEL = os.getenv("CHAIRMAN_MODEL") or DEFAULT_CHAIRMAN_MODEL
+CHAIRMAN_MODEL = _resolve_chairman_model(
+    os.getenv("CHAIRMAN_MODEL"),
+    DEFAULT_CHAIRMAN_MODEL,
+)
+FREE_CHAIRMAN_MODEL = _resolve_chairman_model(
+    os.getenv("FREE_CHAIRMAN_MODEL"),
+    CHAIRMAN_MODEL,
+)
+PRO_CHAIRMAN_MODEL = _resolve_chairman_model(
+    os.getenv("PRO_CHAIRMAN_MODEL"),
+    CHAIRMAN_MODEL,
+)
+
+
+def get_chairman_model_for_plan(
+    plan: str | None,
+    environment: str | None = None,
+) -> str:
+    """Resolve chairman model for a plan with compatibility fallbacks."""
+    normalized_plan = (
+        _strip_wrapping_quotes(plan).lower() if isinstance(plan, str) else "free"
+    )
+    if environment is None:
+        if normalized_plan == "pro":
+            return PRO_CHAIRMAN_MODEL
+        return FREE_CHAIRMAN_MODEL
+
+    resolved_environment = _strip_wrapping_quotes(environment).lower()
+    default_model = _default_chairman_model_for_environment(resolved_environment)
+    legacy_model = _resolve_chairman_model(os.getenv("CHAIRMAN_MODEL"), default_model)
+    if normalized_plan == "pro":
+        return _resolve_chairman_model(os.getenv("PRO_CHAIRMAN_MODEL"), legacy_model)
+    return _resolve_chairman_model(os.getenv("FREE_CHAIRMAN_MODEL"), legacy_model)
+
+
 CORS_ALLOW_ORIGINS = resolve_cors_allow_origins(
     os.getenv("CORS_ALLOW_ORIGINS"),
     COUNCIL_ENV,

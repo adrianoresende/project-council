@@ -121,11 +121,23 @@ Notes:
 - Model list parsing trims spaces/quotes, removes empty entries, and de-duplicates while preserving order.
 - In `development` / `dev` / `local`, both plans always use `DEVELOPMENT_COUNCIL_MODELS` (production plan-specific vars are ignored).
 
-You can still force a specific chairman model with:
+Configure Stage 3 chairman models per plan:
+
+```bash
+FREE_CHAIRMAN_MODEL=openai/gpt-5-nano
+PRO_CHAIRMAN_MODEL=google/gemini-3-pro-preview
+```
+
+Optional backward-compatible fallback for both plans:
 
 ```bash
 CHAIRMAN_MODEL=openai/gpt-5.1
 ```
+
+Chairman precedence per plan is:
+1. `FREE_CHAIRMAN_MODEL` or `PRO_CHAIRMAN_MODEL` (depending on user plan)
+2. `CHAIRMAN_MODEL`
+3. Environment default from `backend/config.py`
 
 Or edit `backend/config.py` defaults directly:
 
@@ -137,7 +149,7 @@ DEFAULT_PRODUCTION_COUNCIL_MODELS = [
     "x-ai/grok-4",
 ]
 
-CHAIRMAN_MODEL = "google/gemini-3-pro-preview"
+DEFAULT_CHAIRMAN_MODEL = "google/gemini-3-pro-preview"
 ```
 
 ### 5. Configure CORS Origins

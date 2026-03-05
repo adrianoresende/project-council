@@ -16,6 +16,7 @@ async def stage3_synthesize_final(
     openrouter_user: str | None = None,
     user_attachments: List[Dict[str, Any]] | None = None,
     plugins: List[Dict[str, Any]] | None = None,
+    chairman_model: str | None = None,
 ) -> Dict[str, Any]:
     """
     Stage 3: chairman synthesizes final response.
@@ -76,8 +77,14 @@ Provide a clear, well-reasoned final answer that represents the council's collec
     else:
         messages = [{"role": "user", "content": chairman_prompt}]
 
+    resolved_chairman_model = (
+        chairman_model.strip()
+        if isinstance(chairman_model, str) and chairman_model.strip()
+        else CHAIRMAN_MODEL
+    )
+
     response = await query_model(
-        CHAIRMAN_MODEL,
+        resolved_chairman_model,
         messages,
         session_id=session_id,
         metadata={"stage": "stage3"},
@@ -87,13 +94,13 @@ Provide a clear, well-reasoned final answer that represents the council's collec
 
     if response is None:
         return {
-            "model": CHAIRMAN_MODEL,
+            "model": resolved_chairman_model,
             "response": "Error: Unable to generate final synthesis.",
             "usage": empty_usage_summary(),
         }
 
     return {
-        "model": CHAIRMAN_MODEL,
+        "model": resolved_chairman_model,
         "response": response.get("content", ""),
         "usage": response.get("usage", empty_usage_summary()),
     }
