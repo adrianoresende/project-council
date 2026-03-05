@@ -1,23 +1,6 @@
-import { useEffect, useRef, useState } from "react";
-import {
-  IconLogout2,
-  IconMessagePlus,
-  IconX,
-  IconShieldLock,
-  IconUserCircle,
-} from "@tabler/icons-react";
+import { IconMessagePlus, IconX } from "@tabler/icons-react";
 import Tooltip from "../tooltip/tooltip";
 import { useI18n } from "../../i18n";
-
-function formatConversationDate(value, locale) {
-  if (!value) return "";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return "";
-  return new Intl.DateTimeFormat(locale || undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(parsed);
-}
 
 export default function Sidebar({
   onChangeMainView,
@@ -32,31 +15,12 @@ export default function Sidebar({
   createConversationDisabledReason,
   credits,
   accountMessage,
-  userEmail,
   userPlan,
-  userRole,
-  onOpenFeedback,
-  onLogout,
   className = "",
   showMobileCloseButton = false,
   onCloseMobile,
 }) {
   const { language, t } = useI18n();
-  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
-  const userMenuRef = useRef(null);
-
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (!userMenuRef.current?.contains(event.target)) {
-        setIsUserMenuOpen(false);
-      }
-    };
-
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, []);
   const quotaLabel =
     userPlan === "pro"
       ? credits === 1
@@ -117,10 +81,6 @@ export default function Sidebar({
           </div>
         ) : (
           conversations.map((conv) => {
-            const createdAtText = formatConversationDate(
-              conv.created_at,
-              language,
-            );
             const archiveLabel =
               conversationListTab === "arquived"
                 ? t("sidebar.unarchive")
@@ -160,84 +120,6 @@ export default function Sidebar({
       </div>
 
       <div className="flex flex-col gap-3 border-t border-slate-200 px-4 py-3">
-        <div ref={userMenuRef} className="relative">
-          <button
-            type="button"
-            className="flex w-full items-center justify-between rounded-md border border-slate-300 bg-white px-2.5 py-2 text-left hover:bg-slate-50"
-            onClick={() => setIsUserMenuOpen((prev) => !prev)}
-          >
-            <div className="flex min-w-0 items-center gap-1.5">
-              <span className="max-w-[120px] truncate text-xs text-slate-500">
-                {userEmail}
-              </span>
-              <span
-                className={`rounded-full border px-1.5 py-0.5 text-[10px] font-bold ${
-                  userPlan === "pro"
-                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                    : "border-slate-300 bg-slate-100 text-slate-600"
-                }`}
-              >
-                {(userPlan || "free").toUpperCase()}
-              </span>
-            </div>
-            <span className="text-[10px] text-slate-500">
-              {isUserMenuOpen ? "▲" : "▼"}
-            </span>
-          </button>
-
-          {isUserMenuOpen && (
-            <div className="absolute bottom-full left-0 z-20 mb-2 w-full rounded-md border border-slate-200 bg-white p-1 shadow-[0_8px_20px_rgba(15,23,42,0.1)]">
-              {userRole === "admin" && (
-                <button
-                  type="button"
-                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-100"
-                  onClick={() => {
-                    onChangeMainView("admin");
-                    setIsUserMenuOpen(false);
-                  }}
-                >
-                  <IconShieldLock size={14} stroke={2} />
-                  {t("sidebar.adminTab")}
-                </button>
-              )}
-              <button
-                type="button"
-                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-100"
-                onClick={() => {
-                  onChangeMainView("account");
-                  setIsUserMenuOpen(false);
-                }}
-              >
-                <IconUserCircle size={14} stroke={2} />
-                {t("sidebar.accountTab")}
-              </button>
-              <button
-                type="button"
-                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-100"
-                onClick={() => {
-                  if (typeof onOpenFeedback === "function") {
-                    onOpenFeedback();
-                  }
-                  setIsUserMenuOpen(false);
-                }}
-              >
-                <IconMessagePlus size={14} stroke={2} />
-                {t("sidebar.sendFeedbackButton")}
-              </button>
-              <button
-                type="button"
-                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-100"
-                onClick={() => {
-                  onLogout();
-                  setIsUserMenuOpen(false);
-                }}
-              >
-                <IconLogout2 size={14} stroke={2} />
-                {t("sidebar.logoutButton")}
-              </button>
-            </div>
-          )}
-        </div>
         <div className="flex items-center justify-between gap-2">
           <span className="text-xs text-slate-500">
             {credits.toLocaleString(language)} {quotaLabel}

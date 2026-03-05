@@ -60,6 +60,7 @@ export const translations = {
       queryLeftOne: "query left",
       queryLeftMany: "queries left",
       upgradeButton: "Upgrade",
+      upgradeProButton: "Upgrade PRO",
       adminTab: "Admin",
       openMenu: "Open menu",
       sendFeedbackButton: "Send feedback",
@@ -101,6 +102,7 @@ export const translations = {
       webSearchAction: "Web search",
       webSearchDescription: "Turn on search for the latest content or data",
       webSearchEnabled: "Enabled",
+      webSearchEnabledTooltip: "Search web enabled",
       contextLabel: "Context",
       filesMessagePlaceholder: "Add a message about these files...",
       unsupportedFileTypeError:
@@ -312,6 +314,7 @@ export const translations = {
       queryLeftOne: "consulta restante",
       queryLeftMany: "consultas restantes",
       upgradeButton: "Mejorar",
+      upgradeProButton: "Upgrade PRO",
       adminTab: "Admin",
       openMenu: "Abrir menú",
       sendFeedbackButton: "Enviar comentarios",
@@ -355,6 +358,7 @@ export const translations = {
       webSearchDescription:
         "Activa la búsqueda para obtener el contenido o los datos más recientes",
       webSearchEnabled: "Activa",
+      webSearchEnabledTooltip: "Búsqueda web activada",
       contextLabel: "Contexto",
       filesMessagePlaceholder: "Añade un mensaje sobre estos archivos...",
       unsupportedFileTypeError:
@@ -571,6 +575,7 @@ export const translations = {
       queryLeftOne: "consulta restante",
       queryLeftMany: "consultas restantes",
       upgradeButton: "Fazer upgrade",
+      upgradeProButton: "Upgrade PRO",
       adminTab: "Admin",
       openMenu: "Abrir menu",
       sendFeedbackButton: "Enviar feedback",
@@ -615,6 +620,7 @@ export const translations = {
       webSearchDescription:
         "Ative a busca para obter o conteúdo ou os dados mais recentes",
       webSearchEnabled: "Ativa",
+      webSearchEnabledTooltip: "Busca na web ativada",
       contextLabel: "Contexto",
       filesMessagePlaceholder: "Adicione uma mensagem sobre esses arquivos...",
       unsupportedFileTypeError:

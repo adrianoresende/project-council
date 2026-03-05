@@ -1,8 +1,29 @@
 import { useEffect, useState } from "react";
-import { IconMenu2 } from "@tabler/icons-react";
+import {
+  IconLogout2,
+  IconMenu2,
+  IconMessagePlus,
+  IconRocket,
+  IconShieldLock,
+  IconUserCircle,
+} from "@tabler/icons-react";
 import Sidebar from "../../components/sidebar/sidebar";
 import ChatInterface from "../../components/chat-interface/chat-interface";
 import FeedbackModal from "../../components/feedback/feedback-modal";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "../../components/ui/dropdown-menu";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetTitle,
+} from "../../components/ui/sheet";
 import PricingPage from "../pricing/page";
 import AccountPage from "../account/account-page";
 import AdminPage from "../admin/page";
@@ -44,7 +65,6 @@ export default function ChatPage({
   const { t } = useI18n();
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const userInitial = getUserInitial(userEmail);
-  const upgradeLabel = userPlan === "pro" ? "Pro" : t("sidebar.upgradeButton");
 
   useEffect(() => {
     if (!isMobileSidebarOpen) return;
@@ -83,6 +103,11 @@ export default function ChatPage({
     onLogout();
   };
 
+  const handleOpenFeedback = () => {
+    closeMobileSidebar();
+    setIsFeedbackModalOpen(true);
+  };
+
   const renderMainView = () => {
     if (mainView === "pricing") return <PricingPage />;
     if (mainView === "account") return <AccountPage />;
@@ -106,14 +131,20 @@ export default function ChatPage({
         onClose={() => setIsFeedbackModalOpen(false)}
       />
 
-      {isMobileSidebarOpen && (
-        <>
-          <button
-            type="button"
-            className="fixed inset-0 z-30 bg-slate-950/25 lg:hidden"
-            aria-label={t("common.close")}
-            onClick={closeMobileSidebar}
-          />
+      <Sheet
+        open={isMobileSidebarOpen}
+        onOpenChange={(open) => setIsMobileSidebarOpen(open)}
+      >
+        <SheetContent
+          side="left"
+          showCloseButton={false}
+          overlayClassName="bg-slate-950/25 backdrop-blur-none lg:hidden"
+          className="w-[min(86vw,320px)] max-w-none gap-0 border-r border-slate-200 bg-slate-50 p-0 lg:hidden"
+        >
+          <SheetTitle className="sr-only">{t("sidebar.openMenu")}</SheetTitle>
+          <SheetDescription className="sr-only">
+            {t("common.appName")}
+          </SheetDescription>
           <Sidebar
             mainView={mainView}
             onChangeMainView={handleChangeMainView}
@@ -129,17 +160,13 @@ export default function ChatPage({
             createConversationDisabledReason={createConversationDisabledReason}
             credits={credits}
             accountMessage={accountMessage}
-            userEmail={userEmail}
             userPlan={userPlan}
-            userRole={userRole}
-            onOpenFeedback={() => setIsFeedbackModalOpen(true)}
-            onLogout={handleLogout}
-            className="fixed inset-y-0 left-0 z-40 w-[min(86vw,320px)] max-w-none shadow-[0_14px_30px_rgba(15,23,42,0.2)] lg:hidden"
+            className="h-full w-full border-r-0 shadow-none"
             showMobileCloseButton
             onCloseMobile={closeMobileSidebar}
           />
-        </>
-      )}
+        </SheetContent>
+      </Sheet>
 
       <div className="hidden lg:block">
         <Sidebar
@@ -157,11 +184,7 @@ export default function ChatPage({
           createConversationDisabledReason={createConversationDisabledReason}
           credits={credits}
           accountMessage={accountMessage}
-          userEmail={userEmail}
           userPlan={userPlan}
-          userRole={userRole}
-          onOpenFeedback={() => setIsFeedbackModalOpen(true)}
-          onLogout={handleLogout}
         />
       </div>
 
@@ -186,21 +209,78 @@ export default function ChatPage({
             </div>
 
             <div className="flex w-24 items-center justify-end gap-2 sm:w-40">
-              <button
-                type="button"
-                className="rounded-full border border-slate-300 bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600 transition-colors hover:border-slate-400 hover:bg-slate-200 hover:text-slate-900"
-                onClick={() => handleChangeMainView("pricing")}
-              >
-                {upgradeLabel}
-              </button>
-              <button
-                type="button"
-                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-900 bg-slate-900 text-xs font-semibold text-white transition-colors hover:border-black hover:bg-black"
-                onClick={() => handleChangeMainView("account")}
-                aria-label={t("sidebar.accountTab")}
-              >
-                {userInitial}
-              </button>
+              {userPlan === "free" && (
+                <button
+                  type="button"
+                  className="rounded-full border border-slate-300 bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600 transition-colors hover:border-slate-400 hover:bg-slate-200 hover:text-slate-900"
+                  onClick={() => handleChangeMainView("pricing")}
+                >
+                  {t("sidebar.upgradeButton")}
+                </button>
+              )}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-slate-900 bg-slate-900 text-xs font-semibold text-white transition-colors hover:border-black hover:bg-black"
+                    aria-label={t("sidebar.accountTab")}
+                  >
+                    {userInitial}
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" sideOffset={8} className="w-56">
+                  <DropdownMenuLabel>
+                    <div className="truncate text-xs font-medium text-slate-500">
+                      {userEmail}
+                    </div>
+                    <div className="mt-1 text-[11px] font-semibold text-slate-700">
+                      {(userPlan || "free").toUpperCase()}
+                    </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {userRole === "admin" && (
+                    <DropdownMenuItem
+                      className="cursor-pointer"
+                      onSelect={() => handleChangeMainView("admin")}
+                    >
+                      <IconShieldLock size={14} stroke={2} />
+                      {t("sidebar.adminTab")}
+                    </DropdownMenuItem>
+                  )}
+                  {userPlan === "free" && (
+                    <DropdownMenuItem
+                      className="cursor-pointer"
+                      onSelect={() => handleChangeMainView("pricing")}
+                    >
+                      <IconRocket size={14} stroke={2} />
+                      {t("sidebar.upgradeProButton")}
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuItem
+                    className="cursor-pointer"
+                    onSelect={() => handleChangeMainView("account")}
+                  >
+                    <IconUserCircle size={14} stroke={2} />
+                    {t("sidebar.accountTab")}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="cursor-pointer"
+                    onSelect={handleOpenFeedback}
+                  >
+                    <IconMessagePlus size={14} stroke={2} />
+                    {t("sidebar.sendFeedbackButton")}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="cursor-pointer"
+                    variant="destructive"
+                    onSelect={handleLogout}
+                  >
+                    <IconLogout2 size={14} stroke={2} />
+                    {t("sidebar.logoutButton")}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
         </header>

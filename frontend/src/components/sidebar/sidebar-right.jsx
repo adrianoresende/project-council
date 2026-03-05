@@ -47,7 +47,13 @@ function StagePlaceholder({ text }) {
   );
 }
 
-export default function SidebarRight({ message, language, t, onClose }) {
+export default function SidebarRight({
+  message,
+  language,
+  t,
+  onClose,
+  className = "",
+}) {
   if (!message) return null;
 
   const stages = [
@@ -80,7 +86,9 @@ export default function SidebarRight({ message, language, t, onClose }) {
   ).length;
 
   return (
-    <aside className="fixed inset-0 z-30 flex h-screen w-screen max-w-none flex-col bg-slate-50 shadow-[0_14px_30px_rgba(15,23,42,0.2)] lg:static lg:inset-auto lg:z-0 lg:w-[380px] lg:max-w-none lg:shrink-0 lg:border-l lg:border-slate-200 lg:shadow-none">
+    <aside
+      className={`flex h-full min-h-0 w-full flex-col bg-slate-50 ${className}`.trim()}
+    >
       <div className="border-b border-slate-200 px-5 py-4">
         <div className="flex items-center justify-between gap-3">
           <div className="text-xs font-semibold uppercase tracking-[0.4px] text-slate-500">

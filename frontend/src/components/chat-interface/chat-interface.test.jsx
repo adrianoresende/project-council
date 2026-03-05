@@ -52,10 +52,8 @@ describe("ChatInterface web search toggle", () => {
     renderChatInterface({ onSendMessage, userPlan: "pro" });
 
     await user.click(screen.getByRole("button", { name: "Open file menu" }));
-    await user.click(screen.getByRole("button", { name: /Web search/i }));
-    expect(
-      screen.getByText("Turn on search for the latest content or data"),
-    ).toBeTruthy();
+    await user.click(screen.getByRole("menuitem", { name: /Web search/i }));
+    expect(screen.getByRole("status", { name: /Web search/i })).toBeTruthy();
 
     await user.type(screen.getByRole("textbox"), "Find latest AI updates");
     await user.click(screen.getByRole("button", { name: "Send" }));
@@ -75,7 +73,7 @@ describe("ChatInterface web search toggle", () => {
     expect(screen.queryByRole("status")).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "Open file menu" }));
-    await user.click(screen.getByRole("button", { name: /Web search/i }));
+    await user.click(screen.getByRole("menuitem", { name: /Web search/i }));
 
     const webSearchIndicator = screen.getByRole("status", {
       name: /Web search/i,
@@ -105,7 +103,7 @@ describe("ChatInterface web search toggle", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "Open file menu" }));
-    await user.click(screen.getByRole("button", { name: /Web search/i }));
+    await user.click(screen.getByRole("menuitem", { name: /Web search/i }));
     expect(
       screen.getByRole("status", { name: /Web search/i }),
     ).toBeTruthy();
