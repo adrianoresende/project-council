@@ -20,7 +20,8 @@ If you are blocked and need user clarification, mark the current step with `[!]`
 
 ## Workflow Steps
 
-### [ ] Step: Technical Specification
+### [x] Step: Technical Specification
+<!-- chat-id: 9e03fd54-886c-4a6e-b97c-3a0a7fd63940 -->
 
 Assess the task's difficulty, as underestimating it leads to poor outcomes.
 - easy: Straightforward implementation, trivial bug fix or feature
@@ -54,16 +55,37 @@ Save to `{@artifacts_path}/plan.md`. If the feature is trivial and doesn't warra
 
 ---
 
-### [ ] Step: Implementation
+### [ ] Step: Scaffold Website App
+- Create a new standalone `website/` app using Vite + React.
+- Install and configure Tailwind CSS v4 (`@tailwindcss/vite`) and baseline global styles.
+- Configure `Inter` as the global font family.
+- Ensure scripts cover `dev`, `build`, `lint`, and `preview`.
+- Add lightweight test tooling for the new app if missing (Vitest + Testing Library) and wire a basic test script.
+- Verification:
+  - `cd website && npm run lint`
+  - `cd website && npm run test` (if configured in this step)
 
-Implement the task according to the technical specification and general engineering best practices.
+### [ ] Step: Build Landing Page Sections
+- Implement a single-page marketing layout with:
+  - Hero/top navigation
+  - `How it works`
+  - `Why use LLM Council`
+  - `Pricing`
+  - Final CTA/footer
+- Use `https://llmcouncil.ai/` as reference for content hierarchy and messaging direction.
+- Use `https://www.brex.com/` as reference for visual tone (layout rhythm, card hierarchy, CTA emphasis).
+- Ensure mobile-first responsive behavior and semantic heading structure.
+- Add/update unit tests that assert required section headings and core pricing content render.
+- Verification:
+  - `cd website && npm run test`
+  - `cd website && npm run lint`
 
-1. Break the task into steps where possible.
-2. Implement the required changes in the codebase
-3. If relevant, write unit tests alongside each change.
-4. Run relevant tests and linters in the end of each step.
-5. Perform basic manual verification if applicable.
-6. After completion, write a report to `{@artifacts_path}/report.md` describing:
-   - What was implemented
-   - How the solution was tested
-   - The biggest issues or challenges encountered
+### [ ] Step: SEO, Validation, and Report
+- Add SEO metadata to `website/index.html` (title, description, canonical, Open Graph, Twitter cards).
+- Add JSON-LD structured data for the web application and plan offers.
+- Run final build and manual QA checks across desktop and mobile viewport sizes.
+- Write `{@artifacts_path}/report.md` summarizing implementation, testing, and key challenges.
+- Verification:
+  - `cd website && npm run lint`
+  - `cd website && npm run test`
+  - `cd website && npm run build`
