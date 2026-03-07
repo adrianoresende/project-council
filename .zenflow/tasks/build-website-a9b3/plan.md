@@ -82,7 +82,8 @@ Save to `{@artifacts_path}/plan.md`. If the feature is trivial and doesn't warra
   - `cd website && npm run test`
   - `cd website && npm run lint`
 
-### [ ] Step: SEO, Validation, and Report
+### [x] Step: SEO, Validation, and Report
+<!-- chat-id: 0905eef4-363c-4522-bdfe-edd9cbcb57d2 -->
 - Add SEO metadata to `website/index.html` (title, description, canonical, Open Graph, Twitter cards).
 - Add JSON-LD structured data for the web application and plan offers.
 - Run final build and manual QA checks across desktop and mobile viewport sizes.
