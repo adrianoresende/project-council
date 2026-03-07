@@ -97,6 +97,13 @@ class AdminUsersContractTests(unittest.IsolatedAsyncioTestCase):
                 ],
             ) as get_models_mock,
             patch(
+                "backend.main.get_chairman_model_for_plan",
+                side_effect=[
+                    "openai/gpt-5-nano",
+                    "google/gemini-3-pro-preview",
+                ],
+            ) as get_chairman_mock,
+            patch(
                 "backend.main.CHAIRMAN_MODEL",
                 "google/gemini-3-pro-preview",
             ),
@@ -111,8 +118,11 @@ class AdminUsersContractTests(unittest.IsolatedAsyncioTestCase):
             payload["pro_models"],
             ["openai/gpt-5.1", "anthropic/claude-sonnet-4.5"],
         )
+        self.assertEqual(payload["free_chairman_model"], "openai/gpt-5-nano")
+        self.assertEqual(payload["pro_chairman_model"], "google/gemini-3-pro-preview")
         self.assertEqual(payload["chairman_model"], "google/gemini-3-pro-preview")
         get_models_mock.assert_has_calls([call("free"), call("pro")])
+        get_chairman_mock.assert_has_calls([call("free"), call("pro")])
 
     async def test_get_admin_user_rejects_blank_user_id(self):
         with self.assertRaises(HTTPException) as raised:
