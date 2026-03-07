@@ -66,7 +66,8 @@ Save to `{@artifacts_path}/plan.md`. If the feature is trivial and doesn't warra
   - `cd website && npm run lint`
   - `cd website && npm run test` (if configured in this step)
 
-### [ ] Step: Build Landing Page Sections
+### [x] Step: Build Landing Page Sections
+<!-- chat-id: 8d7752a2-17a5-4986-b8ae-0bf80fe0b853 -->
 - Implement a single-page marketing layout with:
   - Hero/top navigation
   - `How it works`
