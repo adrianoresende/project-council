@@ -55,7 +55,8 @@ Save to `{@artifacts_path}/plan.md`. If the feature is trivial and doesn't warra
 
 ---
 
-### [ ] Step: Scaffold Website App
+### [x] Step: Scaffold Website App
+<!-- chat-id: 475ae9f1-6941-4f63-8f84-00cc4650c998 -->
 - Create a new standalone `website/` app using Vite + React.
 - Install and configure Tailwind CSS v4 (`@tailwindcss/vite`) and baseline global styles.
 - Configure `Inter` as the global font family.
