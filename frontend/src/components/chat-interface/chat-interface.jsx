@@ -207,12 +207,18 @@ export default function ChatInterface({
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [isWebSearchEnabled, setIsWebSearchEnabled] = useState(false);
   const [fileValidationError, setFileValidationError] = useState("");
+  const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const [isProcessDetailsSidebarOpen, setIsProcessDetailsSidebarOpen] =
     useState(false);
   const [processDetailsMessageIndex, setProcessDetailsMessageIndex] =
     useState(null);
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
+  const dragDepthRef = useRef(0);
+  const conversationMessages = Array.isArray(conversation?.messages)
+    ? conversation.messages
+    : [];
+  const composerDisabled = isLoading || !conversation?.id;
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -226,6 +232,8 @@ export default function ChatInterface({
     setInput("");
     setSelectedFiles([]);
     setFileValidationError("");
+    dragDepthRef.current = 0;
+    setIsDraggingFiles(false);
     setIsProcessDetailsSidebarOpen(false);
     setProcessDetailsMessageIndex(null);
   }, [conversation?.id]);
@@ -259,8 +267,7 @@ export default function ChatInterface({
     fileInputRef.current?.click();
   };
 
-  const handleFileSelection = (event) => {
-    const incomingFiles = Array.from(event.target.files || []);
+  const addFilesToSelection = (incomingFiles) => {
     if (incomingFiles.length === 0) return;
 
     const acceptedFiles = incomingFiles.filter(isSupportedUploadFile);
@@ -285,8 +292,66 @@ export default function ChatInterface({
       });
       return merged;
     });
+  };
 
+  const hasDraggedFiles = (event) => {
+    const dataTransferTypes = event.dataTransfer?.types;
+    if (!dataTransferTypes) return false;
+    return Array.from(dataTransferTypes).includes("Files");
+  };
+
+  const handleFileSelection = (event) => {
+    const incomingFiles = Array.from(event.target.files || []);
+    addFilesToSelection(incomingFiles);
     event.target.value = "";
+  };
+
+  const handleDragEnter = (event) => {
+    if (!hasDraggedFiles(event)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (composerDisabled) return;
+
+    dragDepthRef.current += 1;
+    setIsDraggingFiles(true);
+  };
+
+  const handleDragOver = (event) => {
+    if (!hasDraggedFiles(event)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = "copy";
+    }
+    if (composerDisabled) return;
+
+    if (!isDraggingFiles) {
+      setIsDraggingFiles(true);
+    }
+  };
+
+  const handleDragLeave = (event) => {
+    if (!hasDraggedFiles(event)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (composerDisabled) return;
+
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) {
+      setIsDraggingFiles(false);
+    }
+  };
+
+  const handleDrop = (event) => {
+    if (!hasDraggedFiles(event)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    dragDepthRef.current = 0;
+    setIsDraggingFiles(false);
+    if (composerDisabled) return;
+
+    const droppedFiles = Array.from(event.dataTransfer?.files || []);
+    addFilesToSelection(droppedFiles);
   };
 
   const handleRemoveSelectedFile = (indexToRemove) => {
@@ -295,10 +360,6 @@ export default function ChatInterface({
     );
   };
 
-  const conversationMessages = Array.isArray(conversation?.messages)
-    ? conversation.messages
-    : [];
-  const composerDisabled = isLoading || !conversation?.id;
   const inputPlaceholder = conversationMessages.length
     ? t("chat.continuePlaceholder")
     : t("chat.askPlaceholder");
@@ -346,7 +407,19 @@ export default function ChatInterface({
 
   return (
     <div className="flex h-full flex-1 bg-white">
-      <div className="mx-auto flex min-w-0 max-w-4xl flex-1 flex-col px-[1.5em] sm:px-6">
+      <div
+        data-testid="chat-conversation-body"
+        className="relative mx-auto flex min-w-0 max-w-4xl flex-1 flex-col px-[1.5em] sm:px-6"
+        onDragEnter={handleDragEnter}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
+        {isDraggingFiles && !composerDisabled && (
+          <div className="pointer-events-none absolute inset-x-[1.5em] top-6 bottom-6 z-20 flex items-center justify-center rounded-2xl border-2 border-dashed border-sky-300 bg-sky-50/95 px-5 text-center text-sm font-semibold text-sky-700 sm:inset-x-6">
+            {t("chat.dropFilesPrompt")}
+          </div>
+        )}
         <div className="flex-1 overflow-y-auto px-0 py-6 sm:px-6 lg:px-12">
           {conversationMessages.map((msg, index) => {
             const finalResponse = msg.stage3?.response || msg.content || "";

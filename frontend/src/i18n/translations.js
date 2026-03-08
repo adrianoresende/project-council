@@ -104,6 +104,7 @@ export const translations = {
       webSearchEnabled: "Enabled",
       webSearchEnabledTooltip: "Search web enabled",
       contextLabel: "Context",
+      dropFilesPrompt: "Drop files to add them to this conversation",
       filesMessagePlaceholder: "Add a message about these files...",
       unsupportedFileTypeError:
         "Unsupported file selected. Use PDF, images, DOCX, XLSX or PPTX.",
@@ -360,6 +361,7 @@ export const translations = {
       webSearchEnabled: "Activa",
       webSearchEnabledTooltip: "Búsqueda web activada",
       contextLabel: "Contexto",
+      dropFilesPrompt: "Suelta archivos para agregarlos a esta conversación",
       filesMessagePlaceholder: "Añade un mensaje sobre estos archivos...",
       unsupportedFileTypeError:
         "Archivo no compatible. Usa PDF, imágenes, DOCX, XLSX o PPTX.",
@@ -622,6 +624,7 @@ export const translations = {
       webSearchEnabled: "Ativa",
       webSearchEnabledTooltip: "Busca na web ativada",
       contextLabel: "Contexto",
+      dropFilesPrompt: "Solte arquivos para adicioná-los a esta conversa",
       filesMessagePlaceholder: "Adicione uma mensagem sobre esses arquivos...",
       unsupportedFileTypeError:
         "Arquivo não suportado. Use PDF, imagens, DOCX, XLSX ou PPTX.",
