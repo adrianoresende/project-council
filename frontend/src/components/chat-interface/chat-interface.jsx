@@ -406,20 +406,23 @@ export default function ChatInterface({
   };
 
   return (
-    <div className="flex h-full flex-1 bg-white">
-      <div
-        data-testid="chat-conversation-body"
-        className="relative mx-auto flex min-w-0 max-w-4xl flex-1 flex-col px-[1.5em] sm:px-6"
-        onDragEnter={handleDragEnter}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-      >
-        {isDraggingFiles && !composerDisabled && (
-          <div className="pointer-events-none absolute inset-x-[1.5em] top-6 bottom-6 z-20 flex items-center justify-center rounded-2xl border-2 border-dashed border-sky-300 bg-sky-50/95 px-5 text-center text-sm font-semibold text-sky-700 sm:inset-x-6">
-            {t("chat.dropFilesPrompt")}
+    <div
+      data-testid="chat-conversation-body"
+      className="relative flex h-full flex-1 bg-white"
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {isDraggingFiles && !composerDisabled && (
+        <div className="pointer-events-none absolute inset-4 z-20 flex items-center justify-center rounded-2xl border-2 border-dashed border-sky-300 bg-sky-50/70 px-5 text-center text-sm font-semibold text-sky-700">
+          <div className="flex flex-col items-center gap-3">
+            <IconUpload size={42} />
+            <span>{t("chat.dropFilesPrompt")}</span>
           </div>
-        )}
+        </div>
+      )}
+      <div className="mx-auto flex min-w-0 max-w-4xl flex-1 flex-col px-[1.5em] sm:px-6">
         <div className="flex-1 overflow-y-auto px-0 py-6 sm:px-6 lg:px-12">
           {conversationMessages.map((msg, index) => {
             const finalResponse = msg.stage3?.response || msg.content || "";
