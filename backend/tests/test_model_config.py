@@ -125,6 +125,77 @@ class ModelConfigTests(unittest.TestCase):
             finally:
                 importlib.reload(config)
 
+    def test_get_chairman_model_for_plan_prefers_plan_specific_env_vars(self):
+        with patch.dict(
+            os.environ,
+            {
+                "COUNCIL_ENV": "production",
+                "CHAIRMAN_MODEL": "openai/gpt-5.1",
+                "FREE_CHAIRMAN_MODEL": " openai/gpt-5-nano ",
+                "PRO_CHAIRMAN_MODEL": " google/gemini-3-pro-preview ",
+            },
+            clear=False,
+        ):
+            importlib.reload(config)
+            try:
+                self.assertEqual(
+                    config.get_chairman_model_for_plan("free"),
+                    "openai/gpt-5-nano",
+                )
+                self.assertEqual(
+                    config.get_chairman_model_for_plan("pro"),
+                    "google/gemini-3-pro-preview",
+                )
+            finally:
+                importlib.reload(config)
+
+    def test_get_chairman_model_for_plan_falls_back_to_legacy_chairman(self):
+        with patch.dict(
+            os.environ,
+            {
+                "COUNCIL_ENV": "production",
+                "CHAIRMAN_MODEL": "anthropic/claude-sonnet-4.5",
+                "FREE_CHAIRMAN_MODEL": "  ",
+                "PRO_CHAIRMAN_MODEL": "",
+            },
+            clear=False,
+        ):
+            importlib.reload(config)
+            try:
+                self.assertEqual(
+                    config.get_chairman_model_for_plan("free"),
+                    "anthropic/claude-sonnet-4.5",
+                )
+                self.assertEqual(
+                    config.get_chairman_model_for_plan("pro"),
+                    "anthropic/claude-sonnet-4.5",
+                )
+            finally:
+                importlib.reload(config)
+
+    def test_get_chairman_model_for_plan_environment_override_uses_default_fallbacks(self):
+        with patch.dict(
+            os.environ,
+            {
+                "CHAIRMAN_MODEL": "",
+                "FREE_CHAIRMAN_MODEL": "",
+                "PRO_CHAIRMAN_MODEL": "",
+            },
+            clear=False,
+        ):
+            importlib.reload(config)
+            try:
+                self.assertEqual(
+                    config.get_chairman_model_for_plan("free", environment="development"),
+                    "openai/gpt-5-nano",
+                )
+                self.assertEqual(
+                    config.get_chairman_model_for_plan("pro", environment="production"),
+                    "google/gemini-3-pro-preview",
+                )
+            finally:
+                importlib.reload(config)
+
 
 if __name__ == "__main__":
     unittest.main()

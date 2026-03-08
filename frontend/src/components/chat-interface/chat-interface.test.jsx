@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ChatInterface from "./chat-interface";
 import { I18nProvider } from "../../i18n";
@@ -52,10 +52,8 @@ describe("ChatInterface web search toggle", () => {
     renderChatInterface({ onSendMessage, userPlan: "pro" });
 
     await user.click(screen.getByRole("button", { name: "Open file menu" }));
-    await user.click(screen.getByRole("button", { name: /Web search/i }));
-    expect(
-      screen.getByText("Turn on search for the latest content or data"),
-    ).toBeTruthy();
+    await user.click(screen.getByRole("menuitem", { name: /Web search/i }));
+    expect(screen.getByRole("status", { name: /Web search/i })).toBeTruthy();
 
     await user.type(screen.getByRole("textbox"), "Find latest AI updates");
     await user.click(screen.getByRole("button", { name: "Send" }));
@@ -75,7 +73,7 @@ describe("ChatInterface web search toggle", () => {
     expect(screen.queryByRole("status")).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "Open file menu" }));
-    await user.click(screen.getByRole("button", { name: /Web search/i }));
+    await user.click(screen.getByRole("menuitem", { name: /Web search/i }));
 
     const webSearchIndicator = screen.getByRole("status", {
       name: /Web search/i,
@@ -105,7 +103,7 @@ describe("ChatInterface web search toggle", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "Open file menu" }));
-    await user.click(screen.getByRole("button", { name: /Web search/i }));
+    await user.click(screen.getByRole("menuitem", { name: /Web search/i }));
     expect(
       screen.getByRole("status", { name: /Web search/i }),
     ).toBeTruthy();
@@ -129,5 +127,68 @@ describe("ChatInterface web search toggle", () => {
     expect(onSendMessage).toHaveBeenCalledWith("Any updates?", [], {
       useWebSearch: true,
     });
+  });
+});
+
+describe("ChatInterface file drag and drop", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    HTMLElement.prototype.scrollIntoView = vi.fn();
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("adds dropped supported files to the composer and sends them", async () => {
+    const user = userEvent.setup();
+    const onSendMessage = vi.fn();
+    renderChatInterface({ onSendMessage });
+
+    const conversationBody = screen.getByTestId("chat-conversation-body");
+    const pdfFile = new File(["test"], "brief.pdf", {
+      type: "application/pdf",
+    });
+
+    fireEvent.dragEnter(conversationBody, {
+      dataTransfer: { types: ["Files"] },
+    });
+    expect(
+      screen.getByText("Drop files to add them to this conversation"),
+    ).toBeTruthy();
+
+    fireEvent.drop(conversationBody, {
+      dataTransfer: { types: ["Files"], files: [pdfFile] },
+    });
+    expect(screen.getByText("brief.pdf")).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    expect(onSendMessage).toHaveBeenCalledTimes(1);
+    expect(onSendMessage).toHaveBeenCalledWith("", [pdfFile], {
+      useWebSearch: false,
+    });
+  });
+
+  it("rejects unsupported dropped files and keeps send disabled", () => {
+    renderChatInterface();
+
+    const conversationBody = screen.getByTestId("chat-conversation-body");
+    const unsupportedFile = new File(["test"], "notes.txt", {
+      type: "text/plain",
+    });
+
+    fireEvent.drop(conversationBody, {
+      dataTransfer: { types: ["Files"], files: [unsupportedFile] },
+    });
+
+    expect(
+      screen.getByText(
+        "Unsupported file selected. Use PDF, images, DOCX, XLSX or PPTX.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText("notes.txt")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Send" }).hasAttribute("disabled"),
+    ).toBe(true);
   });
 });

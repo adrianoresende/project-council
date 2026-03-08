@@ -60,6 +60,7 @@ export const translations = {
       queryLeftOne: "query left",
       queryLeftMany: "queries left",
       upgradeButton: "Upgrade",
+      upgradeProButton: "Upgrade PRO",
       adminTab: "Admin",
       openMenu: "Open menu",
       sendFeedbackButton: "Send feedback",
@@ -101,7 +102,9 @@ export const translations = {
       webSearchAction: "Web search",
       webSearchDescription: "Turn on search for the latest content or data",
       webSearchEnabled: "Enabled",
+      webSearchEnabledTooltip: "Search web enabled",
       contextLabel: "Context",
+      dropFilesPrompt: "Drop files to add them to this conversation",
       filesMessagePlaceholder: "Add a message about these files...",
       unsupportedFileTypeError:
         "Unsupported file selected. Use PDF, images, DOCX, XLSX or PPTX.",
@@ -312,6 +315,7 @@ export const translations = {
       queryLeftOne: "consulta restante",
       queryLeftMany: "consultas restantes",
       upgradeButton: "Mejorar",
+      upgradeProButton: "Upgrade PRO",
       adminTab: "Admin",
       openMenu: "Abrir menú",
       sendFeedbackButton: "Enviar comentarios",
@@ -355,7 +359,9 @@ export const translations = {
       webSearchDescription:
         "Activa la búsqueda para obtener el contenido o los datos más recientes",
       webSearchEnabled: "Activa",
+      webSearchEnabledTooltip: "Búsqueda web activada",
       contextLabel: "Contexto",
+      dropFilesPrompt: "Suelta archivos para agregarlos a esta conversación",
       filesMessagePlaceholder: "Añade un mensaje sobre estos archivos...",
       unsupportedFileTypeError:
         "Archivo no compatible. Usa PDF, imágenes, DOCX, XLSX o PPTX.",
@@ -571,6 +577,7 @@ export const translations = {
       queryLeftOne: "consulta restante",
       queryLeftMany: "consultas restantes",
       upgradeButton: "Fazer upgrade",
+      upgradeProButton: "Upgrade PRO",
       adminTab: "Admin",
       openMenu: "Abrir menu",
       sendFeedbackButton: "Enviar feedback",
@@ -615,7 +622,9 @@ export const translations = {
       webSearchDescription:
         "Ative a busca para obter o conteúdo ou os dados mais recentes",
       webSearchEnabled: "Ativa",
+      webSearchEnabledTooltip: "Busca na web ativada",
       contextLabel: "Contexto",
+      dropFilesPrompt: "Solte arquivos para adicioná-los a esta conversa",
       filesMessagePlaceholder: "Adicione uma mensagem sobre esses arquivos...",
       unsupportedFileTypeError:
         "Arquivo não suportado. Use PDF, imagens, DOCX, XLSX ou PPTX.",

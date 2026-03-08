@@ -14,6 +14,19 @@ import {
 } from "@tabler/icons-react";
 import ReactMarkdown from "react-markdown";
 import SidebarRight from "../sidebar/sidebar-right";
+import Tooltip from "../tooltip/tooltip";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetTitle,
+} from "../ui/sheet";
 import { useI18n } from "../../i18n";
 
 const SUPPORTED_FILE_EXTENSIONS = new Set([
@@ -153,6 +166,34 @@ function getWebSearchMaxResultsForPlan(plan) {
   return 2;
 }
 
+function ComposerToolsMenuItem({
+  icon,
+  title,
+  description,
+  onSelect,
+  isActive = false,
+  badge = null,
+  className = "",
+}) {
+  return (
+    <DropdownMenuItem
+      className={`cursor-pointer items-start gap-3 rounded-md px-3 py-2 text-left transition-colors hover:bg-slate-50 data-[highlighted]:bg-slate-50 data-[highlighted]:text-slate-900 ${className}`.trim()}
+      onSelect={onSelect}
+    >
+      <span className={`mt-0.5 ${isActive ? "text-emerald-600" : "text-slate-500"}`}>
+        {icon}
+      </span>
+      <span className="min-w-0">
+        <span className="block text-sm font-semibold text-slate-800">
+          {title}
+        </span>
+        <span className="block text-xs text-slate-500">{description}</span>
+      </span>
+      {badge}
+    </DropdownMenuItem>
+  );
+}
+
 export default function ChatInterface({
   conversation,
   onSendMessage,
@@ -164,16 +205,20 @@ export default function ChatInterface({
   const { language, t } = useI18n();
   const [input, setInput] = useState("");
   const [selectedFiles, setSelectedFiles] = useState([]);
-  const [isFileMenuOpen, setIsFileMenuOpen] = useState(false);
   const [isWebSearchEnabled, setIsWebSearchEnabled] = useState(false);
   const [fileValidationError, setFileValidationError] = useState("");
+  const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const [isProcessDetailsSidebarOpen, setIsProcessDetailsSidebarOpen] =
     useState(false);
   const [processDetailsMessageIndex, setProcessDetailsMessageIndex] =
     useState(null);
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
-  const fileMenuRef = useRef(null);
+  const dragDepthRef = useRef(0);
+  const conversationMessages = Array.isArray(conversation?.messages)
+    ? conversation.messages
+    : [];
+  const composerDisabled = isLoading || !conversation?.id;
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -184,22 +229,11 @@ export default function ChatInterface({
   }, [conversation]);
 
   useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (!fileMenuRef.current) return;
-      if (!fileMenuRef.current.contains(event.target)) {
-        setIsFileMenuOpen(false);
-      }
-    };
-
-    window.addEventListener("mousedown", handleClickOutside);
-    return () => window.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  useEffect(() => {
     setInput("");
     setSelectedFiles([]);
     setFileValidationError("");
-    setIsFileMenuOpen(false);
+    dragDepthRef.current = 0;
+    setIsDraggingFiles(false);
     setIsProcessDetailsSidebarOpen(false);
     setProcessDetailsMessageIndex(null);
   }, [conversation?.id]);
@@ -217,7 +251,6 @@ export default function ChatInterface({
       setInput("");
       setSelectedFiles([]);
       setFileValidationError("");
-      setIsFileMenuOpen(false);
     }
   };
 
@@ -232,11 +265,9 @@ export default function ChatInterface({
   const handleOpenFileDialog = () => {
     if (isLoading) return;
     fileInputRef.current?.click();
-    setIsFileMenuOpen(false);
   };
 
-  const handleFileSelection = (event) => {
-    const incomingFiles = Array.from(event.target.files || []);
+  const addFilesToSelection = (incomingFiles) => {
     if (incomingFiles.length === 0) return;
 
     const acceptedFiles = incomingFiles.filter(isSupportedUploadFile);
@@ -261,8 +292,66 @@ export default function ChatInterface({
       });
       return merged;
     });
+  };
 
+  const hasDraggedFiles = (event) => {
+    const dataTransferTypes = event.dataTransfer?.types;
+    if (!dataTransferTypes) return false;
+    return Array.from(dataTransferTypes).includes("Files");
+  };
+
+  const handleFileSelection = (event) => {
+    const incomingFiles = Array.from(event.target.files || []);
+    addFilesToSelection(incomingFiles);
     event.target.value = "";
+  };
+
+  const handleDragEnter = (event) => {
+    if (!hasDraggedFiles(event)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (composerDisabled) return;
+
+    dragDepthRef.current += 1;
+    setIsDraggingFiles(true);
+  };
+
+  const handleDragOver = (event) => {
+    if (!hasDraggedFiles(event)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = "copy";
+    }
+    if (composerDisabled) return;
+
+    if (!isDraggingFiles) {
+      setIsDraggingFiles(true);
+    }
+  };
+
+  const handleDragLeave = (event) => {
+    if (!hasDraggedFiles(event)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (composerDisabled) return;
+
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) {
+      setIsDraggingFiles(false);
+    }
+  };
+
+  const handleDrop = (event) => {
+    if (!hasDraggedFiles(event)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    dragDepthRef.current = 0;
+    setIsDraggingFiles(false);
+    if (composerDisabled) return;
+
+    const droppedFiles = Array.from(event.dataTransfer?.files || []);
+    addFilesToSelection(droppedFiles);
   };
 
   const handleRemoveSelectedFile = (indexToRemove) => {
@@ -271,10 +360,6 @@ export default function ChatInterface({
     );
   };
 
-  const conversationMessages = Array.isArray(conversation?.messages)
-    ? conversation.messages
-    : [];
-  const composerDisabled = isLoading || !conversation?.id;
   const inputPlaceholder = conversationMessages.length
     ? t("chat.continuePlaceholder")
     : t("chat.askPlaceholder");
@@ -321,7 +406,22 @@ export default function ChatInterface({
   };
 
   return (
-    <div className="flex h-full flex-1 bg-white">
+    <div
+      data-testid="chat-conversation-body"
+      className="relative flex h-full flex-1 bg-white"
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {isDraggingFiles && !composerDisabled && (
+        <div className="pointer-events-none absolute inset-4 z-20 flex items-center justify-center rounded-2xl border-2 border-dashed border-sky-300 bg-sky-50/70 px-5 text-center text-sm font-semibold text-sky-700">
+          <div className="flex flex-col items-center gap-3">
+            <IconUpload size={42} />
+            <span>{t("chat.dropFilesPrompt")}</span>
+          </div>
+        </div>
+      )}
       <div className="mx-auto flex min-w-0 max-w-4xl flex-1 flex-col px-[1.5em] sm:px-6">
         <div className="flex-1 overflow-y-auto px-0 py-6 sm:px-6 lg:px-12">
           {conversationMessages.map((msg, index) => {
@@ -519,83 +619,66 @@ export default function ChatInterface({
             />
 
             <div className="pt-2 flex items-center justify-between">
-              <div ref={fileMenuRef} className="relative flex items-center gap-2">
-                <button
-                  type="button"
-                  className="inline-flex p-2 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-600 transition-colors hover:border-slate-400 hover:bg-slate-100 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
-                  onClick={() => setIsFileMenuOpen((previous) => !previous)}
-                  disabled={composerDisabled}
-                  aria-label={t("chat.openUploadMenu")}
-                >
-                  <IconPlus size={16} />
-                </button>
+              <div className="relative flex items-center gap-2">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className="inline-flex p-2 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-600 transition-colors hover:border-slate-400 hover:bg-slate-100 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+                      disabled={composerDisabled}
+                      aria-label={t("chat.openUploadMenu")}
+                    >
+                      <IconPlus size={16} />
+                    </button>
+                  </DropdownMenuTrigger>
+                  {!composerDisabled && (
+                    <DropdownMenuContent
+                      align="start"
+                      side="top"
+                      sideOffset={10}
+                      className="w-[300px] rounded-lg border border-slate-200 bg-white p-2 shadow-lg/10 shadow-slate-400"
+                    >
+                      <ComposerToolsMenuItem
+                        icon={<IconUpload size={16} />}
+                        title={t("chat.uploadFileAction")}
+                        description={t("chat.uploadFileDescription")}
+                        onSelect={handleOpenFileDialog}
+                      />
+                      <ComposerToolsMenuItem
+                        className="mt-1"
+                        icon={<IconSearch size={16} />}
+                        title={t("chat.webSearchAction")}
+                        description={t("chat.webSearchDescription", {
+                          count: webSearchMaxResults,
+                        })}
+                        isActive={isWebSearchEnabled}
+                        onSelect={() => {
+                          setIsWebSearchEnabled((previous) => !previous);
+                        }}
+                        badge={
+                          isWebSearchEnabled ? (
+                            <span className="ml-auto mt-0.5 inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.3px] text-emerald-700">
+                              <IconCheck size={11} />
+                              {t("chat.webSearchEnabled")}
+                            </span>
+                          ) : null
+                        }
+                      />
+                    </DropdownMenuContent>
+                  )}
+                </DropdownMenu>
 
                 {isWebSearchEnabled && (
-                  <span
-                    role="status"
-                    aria-label={t("chat.webSearchAction")}
-                    className="inline-flex p-2 items-center justify-center rounded-full border border-emerald-300 bg-emerald-50 text-emerald-600"
-                    title={t("chat.webSearchAction")}
-                  >
-                    <IconWorld size={16} />
-                  </span>
-                )}
-
-                {isFileMenuOpen && !composerDisabled && (
-                  <div className="absolute bottom-10 left-0 z-20 w-[300px] rounded-lg border border-slate-200 bg-white p-2 shadow-lg/10 shadow-slate-400">
-                    <button
-                      type="button"
-                      className="flex w-full items-start gap-3 rounded-md px-3 py-2 text-left transition-colors hover:bg-slate-50 cursor-pointer"
-                      onClick={handleOpenFileDialog}
+                  <Tooltip content={t("chat.webSearchEnabledTooltip")}>
+                    <span
+                      role="status"
+                      aria-label={t("chat.webSearchAction")}
+                      className="inline-flex p-2 items-center justify-center rounded-full border border-emerald-300 bg-emerald-50 text-emerald-600"
+                      title={t("chat.webSearchEnabledTooltip")}
                     >
-                      <span className="mt-0.5 text-slate-500">
-                        <IconUpload size={16} />
-                      </span>
-                      <span>
-                        <span className="block text-sm font-semibold text-slate-800">
-                          {t("chat.uploadFileAction")}
-                        </span>
-                        <span className="block text-xs text-slate-500">
-                          {t("chat.uploadFileDescription")}
-                        </span>
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      className={`mt-1 flex w-full items-start gap-3 rounded-md px-3 py-2 text-left transition-colors cursor-pointer ${
-                        isWebSearchEnabled
-                          ? "bg-emerald-50 hover:bg-emerald-100"
-                          : "hover:bg-slate-50"
-                      }`}
-                      onClick={() =>
-                        setIsWebSearchEnabled((previous) => !previous)
-                      }
-                    >
-                      <span
-                        className={`mt-0.5 ${
-                          isWebSearchEnabled ? "text-emerald-600" : "text-slate-500"
-                        }`}
-                      >
-                        <IconSearch size={16} />
-                      </span>
-                      <span className="min-w-0">
-                        <span className="block text-sm font-semibold text-slate-800">
-                          {t("chat.webSearchAction")}
-                        </span>
-                        <span className="block text-xs text-slate-500">
-                          {t("chat.webSearchDescription", {
-                            count: webSearchMaxResults,
-                          })}
-                        </span>
-                      </span>
-                      {isWebSearchEnabled && (
-                        <span className="ml-auto mt-0.5 inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.3px] text-emerald-700">
-                          <IconCheck size={11} />
-                          {t("chat.webSearchEnabled")}
-                        </span>
-                      )}
-                    </button>
-                  </div>
+                      <IconWorld size={16} />
+                    </span>
+                  </Tooltip>
                 )}
 
                 <input
@@ -638,20 +721,30 @@ export default function ChatInterface({
       </div>
 
       {isProcessDetailsSidebarOpen && processDetailsMessage && (
-        <>
-          <button
-            type="button"
-            className="fixed inset-0 z-20 bg-slate-950/25 lg:hidden"
-            aria-label={t("common.close")}
-            onClick={() => setIsProcessDetailsSidebarOpen(false)}
-          />
-          <SidebarRight
-            message={processDetailsMessage}
-            language={language}
-            t={t}
-            onClose={() => setIsProcessDetailsSidebarOpen(false)}
-          />
-        </>
+        <Sheet
+          open={isProcessDetailsSidebarOpen}
+          onOpenChange={(open) => setIsProcessDetailsSidebarOpen(open)}
+        >
+          <SheetContent
+            side="right"
+            showCloseButton={false}
+            overlayClassName="bg-slate-950/25 backdrop-blur-none"
+            className="w-full max-w-none gap-0 border-l border-slate-200 bg-slate-50 p-0 sm:w-[min(92vw,540px)] lg:w-[380px]"
+          >
+            <SheetTitle className="sr-only">
+              {t("chat.processDetailsTitle")}
+            </SheetTitle>
+            <SheetDescription className="sr-only">
+              {t("chat.viewProcessDetails")}
+            </SheetDescription>
+            <SidebarRight
+              message={processDetailsMessage}
+              language={language}
+              t={t}
+              onClose={() => setIsProcessDetailsSidebarOpen(false)}
+            />
+          </SheetContent>
+        </Sheet>
       )}
 
       {!isProcessDetailsSidebarOpen &&

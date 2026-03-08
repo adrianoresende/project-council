@@ -46,6 +46,7 @@ from .config import (
     PRO_DAILY_TOKEN_CREDITS,
     FREE_DAILY_QUERY_LIMIT,
     get_council_models_for_plan,
+    get_chairman_model_for_plan,
     CHAIRMAN_MODEL,
     CORS_ALLOW_ORIGINS,
 )
@@ -170,6 +171,8 @@ class AdminSystemModelsResponse(BaseModel):
 
     free_models: List[str]
     pro_models: List[str]
+    free_chairman_model: str
+    pro_chairman_model: str
     chairman_model: str
 
 
@@ -815,9 +818,13 @@ async def get_admin_users(_: Dict[str, Any] = Depends(get_current_admin_user)):
 @app.get("/api/admin/system/models", response_model=AdminSystemModelsResponse)
 async def get_admin_system_models(_: Dict[str, Any] = Depends(get_current_admin_user)):
     """Return configured council model lists for FREE and PRO plans."""
+    free_chairman_model = get_chairman_model_for_plan("free")
+    pro_chairman_model = get_chairman_model_for_plan("pro")
     return {
         "free_models": get_council_models_for_plan("free"),
         "pro_models": get_council_models_for_plan("pro"),
+        "free_chairman_model": free_chairman_model,
+        "pro_chairman_model": pro_chairman_model,
         "chairman_model": CHAIRMAN_MODEL,
     }
 
@@ -985,6 +992,7 @@ async def send_message(
     openrouter_user = _resolve_openrouter_user_identifier(user)
     plan = _get_user_plan(user)
     council_models = get_council_models_for_plan(plan)
+    chairman_model = get_chairman_model_for_plan(plan)
     resolved_timezone = _resolve_user_timezone(user, user_timezone)
     remaining_balance_after = 0
 
@@ -1113,6 +1121,7 @@ async def send_message(
             openrouter_user=openrouter_user,
             user_attachments=attachment_parts,
             plugins=request_plugins,
+            chairman_model=chairman_model,
         )
         metadata = {
             "label_to_model": label_to_model,
@@ -1211,6 +1220,7 @@ async def send_message_stream(
     openrouter_user = _resolve_openrouter_user_identifier(user)
     plan = _get_user_plan(user)
     council_models = get_council_models_for_plan(plan)
+    chairman_model = get_chairman_model_for_plan(plan)
     resolved_timezone = _resolve_user_timezone(user, user_timezone)
     remaining_balance_after = 0
 
@@ -1475,6 +1485,7 @@ async def send_message_stream(
                 openrouter_user=openrouter_user,
                 user_attachments=attachment_parts,
                 plugins=request_plugins,
+                chairman_model=chairman_model,
             )
 
             if await http_request.is_disconnected():
