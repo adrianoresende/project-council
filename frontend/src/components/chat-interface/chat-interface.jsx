@@ -1,26 +1,16 @@
 import { useState, useEffect, useRef } from "react";
 import {
-  IconCheck,
   IconFile,
   IconFileTypePdf,
   IconLoader2,
   IconPhoto,
-  IconPlus,
   IconSearch,
   IconSend2,
   IconUpload,
-  IconWorld,
   IconX,
 } from "@tabler/icons-react";
 import ReactMarkdown from "react-markdown";
 import SidebarRight from "../sidebar/sidebar-right";
-import Tooltip from "../tooltip/tooltip";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "../ui/dropdown-menu";
 import {
   Sheet,
   SheetContent,
@@ -159,48 +149,12 @@ function isMessageProcessing(message) {
   );
 }
 
-function getWebSearchMaxResultsForPlan(plan) {
-  if (typeof plan === "string" && plan.trim().toLowerCase() === "pro") {
-    return 5;
-  }
-  return 2;
-}
-
-function ComposerToolsMenuItem({
-  icon,
-  title,
-  description,
-  onSelect,
-  isActive = false,
-  badge = null,
-  className = "",
-}) {
-  return (
-    <DropdownMenuItem
-      className={`cursor-pointer items-start gap-3 rounded-md px-3 py-2 text-left transition-colors hover:bg-slate-50 data-[highlighted]:bg-slate-50 data-[highlighted]:text-slate-900 ${className}`.trim()}
-      onSelect={onSelect}
-    >
-      <span className={`mt-0.5 ${isActive ? "text-emerald-600" : "text-slate-500"}`}>
-        {icon}
-      </span>
-      <span className="min-w-0">
-        <span className="block text-sm font-semibold text-slate-800">
-          {title}
-        </span>
-        <span className="block text-xs text-slate-500">{description}</span>
-      </span>
-      {badge}
-    </DropdownMenuItem>
-  );
-}
-
 export default function ChatInterface({
   conversation,
   onSendMessage,
   onCancelMessage,
   canCancelMessage,
   isLoading,
-  userPlan = "free",
 }) {
   const { language, t } = useI18n();
   const [input, setInput] = useState("");
@@ -367,7 +321,6 @@ export default function ChatInterface({
     selectedFiles.length > 0
       ? t("chat.filesMessagePlaceholder")
       : inputPlaceholder;
-  const webSearchMaxResults = getWebSearchMaxResultsForPlan(userPlan);
   const contextPercent = Math.min(100, Math.max(10, selectedFiles.length * 10));
   const latestAssistantMessageIndex =
     getLatestAssistantMessageIndex(conversationMessages);
@@ -620,66 +573,34 @@ export default function ChatInterface({
 
             <div className="pt-2 flex items-center justify-between">
               <div className="relative flex items-center gap-2">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <button
-                      type="button"
-                      className="inline-flex p-2 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-600 transition-colors hover:border-slate-400 hover:bg-slate-100 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
-                      disabled={composerDisabled}
-                      aria-label={t("chat.openUploadMenu")}
-                    >
-                      <IconPlus size={16} />
-                    </button>
-                  </DropdownMenuTrigger>
-                  {!composerDisabled && (
-                    <DropdownMenuContent
-                      align="start"
-                      side="top"
-                      sideOffset={10}
-                      className="w-[300px] rounded-lg border border-slate-200 bg-white p-2 shadow-lg/10 shadow-slate-400"
-                    >
-                      <ComposerToolsMenuItem
-                        icon={<IconUpload size={16} />}
-                        title={t("chat.uploadFileAction")}
-                        description={t("chat.uploadFileDescription")}
-                        onSelect={handleOpenFileDialog}
-                      />
-                      <ComposerToolsMenuItem
-                        className="mt-1"
-                        icon={<IconSearch size={16} />}
-                        title={t("chat.webSearchAction")}
-                        description={t("chat.webSearchDescription", {
-                          count: webSearchMaxResults,
-                        })}
-                        isActive={isWebSearchEnabled}
-                        onSelect={() => {
-                          setIsWebSearchEnabled((previous) => !previous);
-                        }}
-                        badge={
-                          isWebSearchEnabled ? (
-                            <span className="ml-auto mt-0.5 inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.3px] text-emerald-700">
-                              <IconCheck size={11} />
-                              {t("chat.webSearchEnabled")}
-                            </span>
-                          ) : null
-                        }
-                      />
-                    </DropdownMenuContent>
-                  )}
-                </DropdownMenu>
+                <button
+                  type="button"
+                  className={`inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors ${
+                    isWebSearchEnabled
+                      ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                      : "border-slate-300 bg-white text-slate-700 hover:border-slate-400 hover:bg-slate-100"
+                  } disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer`}
+                  disabled={composerDisabled}
+                  aria-label={t("chat.webSearchAction")}
+                  aria-pressed={isWebSearchEnabled}
+                  onClick={() =>
+                    setIsWebSearchEnabled((previous) => !previous)
+                  }
+                >
+                  <IconSearch size={14} />
+                  {t("chat.webSearchAction")}
+                </button>
 
-                {isWebSearchEnabled && (
-                  <Tooltip content={t("chat.webSearchEnabledTooltip")}>
-                    <span
-                      role="status"
-                      aria-label={t("chat.webSearchAction")}
-                      className="inline-flex p-2 items-center justify-center rounded-full border border-emerald-300 bg-emerald-50 text-emerald-600"
-                      title={t("chat.webSearchEnabledTooltip")}
-                    >
-                      <IconWorld size={16} />
-                    </span>
-                  </Tooltip>
-                )}
+                <button
+                  type="button"
+                  className="inline-flex h-8 items-center gap-1.5 rounded-full border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 transition-colors hover:border-slate-400 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+                  disabled={composerDisabled}
+                  aria-label={t("chat.attachAction")}
+                  onClick={handleOpenFileDialog}
+                >
+                  <IconUpload size={14} />
+                  {t("chat.attachAction")}
+                </button>
 
                 <input
                   ref={fileInputRef}
