@@ -385,16 +385,6 @@ export default function ChatInterface({
       : null;
 
   useEffect(() => {
-    if (!isProcessingRunning || latestAssistantMessageIndex === null) return;
-    const latestAssistantMessage = conversationMessages[latestAssistantMessageIndex];
-    if (getMessageWorkflowMode(latestAssistantMessage) === "single") {
-      return;
-    }
-    setProcessDetailsMessageIndex(latestAssistantMessageIndex);
-    setIsProcessDetailsSidebarOpen(true);
-  }, [conversationMessages, isProcessingRunning, latestAssistantMessageIndex]);
-
-  useEffect(() => {
     if (processDetailsMessageIndex === null) return;
     if (!conversationMessages[processDetailsMessageIndex]) {
       setProcessDetailsMessageIndex(null);
@@ -514,14 +504,18 @@ export default function ChatInterface({
                         <ReactMarkdown>{finalResponse}</ReactMarkdown>
                       </div>
                     ) : isTurnStillProcessing ? (
-                      <div className="my-3 flex items-center gap-3 text-sm italic text-slate-500">
-                        <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-200 border-t-sky-500"></div>
-                        <span>{t("chat.draftingFinalAnswer")}</span>
-                      </div>
+                      !isSingleModeTurn && (
+                        <div className="my-3 flex items-center gap-3 text-sm italic text-slate-500">
+                          <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-200 border-t-sky-500"></div>
+                          <span>{t("chat.draftingFinalAnswer")}</span>
+                        </div>
+                      )
                     ) : (
-                      <div className="my-3 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-                        {t("chat.stage3NotAvailable")}
-                      </div>
+                      !isSingleModeTurn && (
+                        <div className="my-3 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                          {t("chat.stage3NotAvailable")}
+                        </div>
+                      )
                     )}
 
                     {shouldShowDeliberation && (
@@ -541,14 +535,10 @@ export default function ChatInterface({
             );
           })}
 
-          {isLoading && (
+          {isLoading && activeConversationMode !== "single" && (
             <div className="flex items-center gap-3 p-4 text-sm text-slate-500">
               <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-200 border-t-sky-500"></div>
-              <span>
-                {activeConversationMode === "single"
-                  ? t("chat.consultingSingleModel")
-                  : t("chat.consultingCouncil")}
-              </span>
+              <span>{t("chat.consultingCouncil")}</span>
             </div>
           )}
 

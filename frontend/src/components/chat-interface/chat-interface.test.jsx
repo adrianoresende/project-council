@@ -190,6 +190,74 @@ describe("ChatInterface composer actions", () => {
     expect(screen.getByText("Model Answer")).toBeTruthy();
     expect(screen.queryByText("View process details")).toBeNull();
   });
+
+  it("keeps process details sidebar closed by default for council turns in progress", () => {
+    renderChatInterface({
+      conversation: {
+        id: "conv-1",
+        messages: [
+          { role: "user", content: "Analyze this topic" },
+          {
+            role: "assistant",
+            stage1: null,
+            stage2: null,
+            stage3: null,
+            metadata: { workflow_mode: "council" },
+            loading: {
+              stage1: true,
+              stage2: false,
+              stage3: false,
+            },
+          },
+        ],
+      },
+      conversationModelSelection: {
+        model_mode: "council",
+        selected_model: null,
+        selected_model_title: null,
+      },
+      isLoading: true,
+    });
+
+    expect(
+      screen.getByRole("button", { name: "View process details" }),
+    ).toBeTruthy();
+  });
+
+  it("does not show stage 3 feedback while single-mode response is processing", () => {
+    renderChatInterface({
+      conversation: {
+        id: "conv-1",
+        messages: [
+          { role: "user", content: "Quick answer please" },
+          {
+            role: "assistant",
+            stage1: null,
+            stage2: null,
+            stage3: null,
+            metadata: { workflow_mode: "single" },
+            loading: {
+              stage1: false,
+              stage2: false,
+              stage3: true,
+            },
+          },
+        ],
+      },
+      conversationModelSelection: {
+        model_mode: "single",
+        selected_model: "openai/gpt-5.1",
+        selected_model_title: "GPT-5.1",
+      },
+      isLoading: true,
+    });
+
+    expect(screen.queryByText("Drafting final answer...")).toBeNull();
+    expect(
+      screen.queryByText("Stage 3 data is not available for this message."),
+    ).toBeNull();
+    expect(screen.queryByText("Consulting the selected model...")).toBeNull();
+  });
 });
 
 describe("ChatInterface file drag and drop", () => {

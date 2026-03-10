@@ -116,3 +116,10 @@ Save to `{@artifacts_path}/plan.md`. If the feature is trivial and doesn't warra
   - `cd frontend && npm run test`
   - `cd frontend && npm run lint`
 - Write final implementation report to `{@artifacts_path}/report.md` with implemented changes, test evidence, and major challenges.
+
+### [x] Step: Fix UX
+<!-- chat-id: 486135b6-e98e-46bf-b358-6febacbfc2dd -->
+
+- When sending a message, if it's a single model, it should not show the stage 3 feedback.
+- With a council model, when sending a message, it should not automatically open the right sidebar; keep it hidden until the user clicks "view process details," in the middle of the process, or with a final response.
+- Remove the "Consulting the selected model..." feedback.
