@@ -56,6 +56,12 @@ export default function ChatPage({
   userRole,
   onLogout,
   conversation,
+  availableModels = [],
+  isModelOptionsLoading = false,
+  conversationModelSelection,
+  isUpdatingConversationModel = false,
+  conversationModelError = "",
+  onChangeConversationModel,
   onSendMessage,
   onCancelMessage,
   canCancelMessage,
@@ -119,6 +125,12 @@ export default function ChatPage({
         onCancelMessage={onCancelMessage}
         canCancelMessage={canCancelMessage}
         isLoading={isLoading}
+        availableModels={availableModels}
+        isModelOptionsLoading={isModelOptionsLoading}
+        conversationModelSelection={conversationModelSelection}
+        isUpdatingConversationModel={isUpdatingConversationModel}
+        conversationModelError={conversationModelError}
+        onChangeConversationModel={onChangeConversationModel}
         userPlan={userPlan}
       />
     );

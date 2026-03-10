@@ -241,6 +241,13 @@ export const api = {
   },
 
   /**
+   * List active managed models available to chat users.
+   */
+  async getModels() {
+    return request("/api/models");
+  },
+
+  /**
    * Create Stripe checkout session for Pro plan.
    */
   async createProCheckoutSession(successUrl, cancelUrl) {
@@ -287,6 +294,22 @@ export const api = {
    */
   async getConversation(conversationId) {
     return request(`/api/conversations/${conversationId}`);
+  },
+
+  /**
+   * Persist conversation model mode/selection.
+   */
+  async updateConversationModelSelection(
+    conversationId,
+    { model_mode, selected_model },
+  ) {
+    return request(`/api/conversations/${conversationId}/model`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        model_mode,
+        selected_model,
+      }),
+    });
   },
 
   /**

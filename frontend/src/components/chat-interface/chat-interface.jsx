@@ -17,6 +17,13 @@ import {
   SheetDescription,
   SheetTitle,
 } from "../ui/sheet";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
 import { useI18n } from "../../i18n";
 
 const SUPPORTED_FILE_EXTENSIONS = new Set([
@@ -101,31 +108,40 @@ function FileIcon({ kind, mimeType }) {
   return <IconFile size={14} />;
 }
 
-function formatUsageSummary(usage, t, language) {
-  if (!usage || typeof usage !== "object") return null;
-
-  const totalTokens = Number(usage.total_tokens ?? 0);
-  const modelCalls = Number(usage.model_calls ?? 0);
-  const parts = [
-    t("common.usageTokens", { count: totalTokens.toLocaleString(language) }),
-  ];
-
-  if (Number.isFinite(modelCalls) && modelCalls > 0) {
-    parts.push(
-      t("common.usageModelCalls", {
-        count: modelCalls.toLocaleString(language),
-      }),
-    );
-  }
-
-  return parts.join(" · ");
-}
-
 function getShortModelName(model, t) {
   if (typeof model !== "string" || !model) {
     return t("stage.councilChairmanFallback");
   }
   return model.split("/")[1] || model;
+}
+
+function normalizeMessageWorkflowMode(mode) {
+  if (typeof mode !== "string") return null;
+  const normalized = mode.trim().toLowerCase();
+  if (normalized === "single") return "single";
+  if (normalized === "council") return "council";
+  return null;
+}
+
+function getMessageWorkflowMode(message) {
+  if (!message || typeof message !== "object") return "council";
+
+  const metadataMode = normalizeMessageWorkflowMode(
+    message?.metadata?.workflow_mode,
+  );
+  if (metadataMode) return metadataMode;
+
+  const stage3Mode = normalizeMessageWorkflowMode(message?.stage3?.workflow_mode);
+  if (stage3Mode) return stage3Mode;
+
+  if (
+    (Array.isArray(message?.stage1) && message.stage1.length > 0) ||
+    (Array.isArray(message?.stage2) && message.stage2.length > 0)
+  ) {
+    return "council";
+  }
+
+  return "council";
 }
 
 function getLatestAssistantMessageIndex(messages) {
@@ -155,6 +171,12 @@ export default function ChatInterface({
   onCancelMessage,
   canCancelMessage,
   isLoading,
+  availableModels = [],
+  isModelOptionsLoading = false,
+  conversationModelSelection,
+  isUpdatingConversationModel = false,
+  conversationModelError = "",
+  onChangeConversationModel,
 }) {
   const { language, t } = useI18n();
   const [input, setInput] = useState("");
@@ -172,6 +194,18 @@ export default function ChatInterface({
   const conversationMessages = Array.isArray(conversation?.messages)
     ? conversation.messages
     : [];
+  const activeConversationMode =
+    conversationModelSelection?.model_mode === "single"
+      ? "single"
+      : "council";
+  const selectedConversationModelValue =
+    activeConversationMode === "single" &&
+    typeof conversationModelSelection?.selected_model === "string" &&
+    conversationModelSelection.selected_model.trim()
+      ? conversationModelSelection.selected_model.trim()
+      : "council";
+  const modelSelectorDisabled =
+    !conversation?.id || isLoading || isUpdatingConversationModel;
   const composerDisabled = isLoading || !conversation?.id;
 
   const scrollToBottom = () => {
@@ -314,6 +348,16 @@ export default function ChatInterface({
     );
   };
 
+  const managedModelOptions = Array.isArray(availableModels)
+    ? availableModels.filter(
+        (modelOption) =>
+          modelOption &&
+          typeof modelOption === "object" &&
+          typeof modelOption.model === "string" &&
+          modelOption.model.trim(),
+      )
+    : [];
+
   const inputPlaceholder = conversationMessages.length
     ? t("chat.continuePlaceholder")
     : t("chat.askPlaceholder");
@@ -328,6 +372,7 @@ export default function ChatInterface({
     latestAssistantMessageIndex !== null
       ? conversationMessages[latestAssistantMessageIndex]
       : null;
+  const latestAssistantMessageMode = getMessageWorkflowMode(latestAssistantMessage);
   const isProcessingRunning =
     isLoading || isMessageProcessing(latestAssistantMessage);
   const selectedProcessDetailsMessage =
@@ -341,9 +386,13 @@ export default function ChatInterface({
 
   useEffect(() => {
     if (!isProcessingRunning || latestAssistantMessageIndex === null) return;
+    const latestAssistantMessage = conversationMessages[latestAssistantMessageIndex];
+    if (getMessageWorkflowMode(latestAssistantMessage) === "single") {
+      return;
+    }
     setProcessDetailsMessageIndex(latestAssistantMessageIndex);
     setIsProcessDetailsSidebarOpen(true);
-  }, [isProcessingRunning, latestAssistantMessageIndex]);
+  }, [conversationMessages, isProcessingRunning, latestAssistantMessageIndex]);
 
   useEffect(() => {
     if (processDetailsMessageIndex === null) return;
@@ -356,6 +405,11 @@ export default function ChatInterface({
   const handleOpenProcessDetails = (messageIndex) => {
     setProcessDetailsMessageIndex(messageIndex);
     setIsProcessDetailsSidebarOpen(true);
+  };
+
+  const handleModelSelectionChange = (nextValue) => {
+    if (typeof onChangeConversationModel !== "function") return;
+    onChangeConversationModel(nextValue);
   };
 
   return (
@@ -384,12 +438,15 @@ export default function ChatInterface({
               typeof msg.content === "string" && msg.content.trim().length > 0;
             const isTurnStillProcessing = isMessageProcessing(msg);
             const isCancelledTurn = Boolean(msg.stage3?.cancelled);
+            const messageWorkflowMode = getMessageWorkflowMode(msg);
+            const isSingleModeTurn = messageWorkflowMode === "single";
             const hasAnyDeliberationData = Boolean(
               (Array.isArray(msg.stage1) && msg.stage1.length > 0) ||
               (Array.isArray(msg.stage2) && msg.stage2.length > 0) ||
               msg.stage3,
             );
             const shouldShowDeliberation = Boolean(
+              !isSingleModeTurn &&
               !isTurnStillProcessing &&
               (hasAnyDeliberationData || isCancelledTurn),
             );
@@ -447,7 +504,9 @@ export default function ChatInterface({
                 ) : (
                   <div className="mb-4">
                     <div className="mb-2 text-xs font-semibold uppercase tracking-[0.5px] text-slate-500">
-                      {t("chat.councilAnswerLabel")}
+                      {isSingleModeTurn
+                        ? t("chat.modelAnswerLabel")
+                        : t("chat.councilAnswerLabel")}
                     </div>
 
                     {finalResponse ? (
@@ -485,7 +544,11 @@ export default function ChatInterface({
           {isLoading && (
             <div className="flex items-center gap-3 p-4 text-sm text-slate-500">
               <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-200 border-t-sky-500"></div>
-              <span>{t("chat.consultingCouncil")}</span>
+              <span>
+                {activeConversationMode === "single"
+                  ? t("chat.consultingSingleModel")
+                  : t("chat.consultingCouncil")}
+              </span>
             </div>
           )}
 
@@ -495,6 +558,63 @@ export default function ChatInterface({
         <form className="pb-6 relative" onSubmit={handleSubmit}>
           <div className="absolute top-[-32px] left-0 w-full h-[32px] bg-gradient-to-t from-white to-transparent pointer-events-none"></div>
           <div className="p-3 mx-auto w-full rounded-2xl border border-slate-200 focus-within:border-slate-400 transition-colors shadow-lg/10 shadow-slate-700 focus-within:shadow-slate-500">
+            <div className="border-b border-slate-300 px-4 pb-3 pt-2">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="text-xs font-medium uppercase tracking-[0.4px] text-slate-500">
+                  {t("chat.modelSelectorLabel")}
+                </div>
+                <div className="w-full max-w-[320px]">
+                  <Select
+                    value={selectedConversationModelValue}
+                    disabled={modelSelectorDisabled}
+                    onValueChange={handleModelSelectionChange}
+                  >
+                    <SelectTrigger
+                      aria-label={t("chat.modelSelectorLabel")}
+                      className="h-8 w-full rounded-full border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 shadow-none"
+                    >
+                      <SelectValue
+                        placeholder={t("chat.modelSelectorPlaceholder")}
+                      />
+                    </SelectTrigger>
+                    <SelectContent align="end">
+                      <SelectItem value="council">
+                        {t("chat.councilOptionLabel")}
+                      </SelectItem>
+                      {managedModelOptions.map((modelOption) => {
+                        const modelId = modelOption.model.trim();
+                        const title =
+                          typeof modelOption.title === "string" &&
+                          modelOption.title.trim()
+                            ? modelOption.title.trim()
+                            : getShortModelName(modelId, t);
+                        const category =
+                          typeof modelOption.category === "string" &&
+                          modelOption.category.trim()
+                            ? modelOption.category.trim()
+                            : null;
+                        const optionLabel = category
+                          ? `${title} (${category})`
+                          : title;
+                        return (
+                          <SelectItem key={modelId} value={modelId}>
+                            {optionLabel}
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="mt-1 min-h-[16px] text-xs text-slate-500">
+                {isUpdatingConversationModel
+                  ? t("chat.modelSelectorSaving")
+                  : isModelOptionsLoading
+                    ? t("chat.modelSelectorLoading")
+                    : conversationModelError}
+              </div>
+            </div>
+
             {selectedFiles.length > 0 && (
               <div className="border-b border-slate-300 px-4 pb-4 pt-3">
                 <div className="mb-3 flex items-center gap-3 text-xs text-slate-500">
@@ -641,7 +761,9 @@ export default function ChatInterface({
         </form>
       </div>
 
-      {isProcessDetailsSidebarOpen && processDetailsMessage && (
+      {isProcessDetailsSidebarOpen &&
+        processDetailsMessage &&
+        getMessageWorkflowMode(processDetailsMessage) !== "single" && (
         <Sheet
           open={isProcessDetailsSidebarOpen}
           onOpenChange={(open) => setIsProcessDetailsSidebarOpen(open)}
@@ -670,7 +792,8 @@ export default function ChatInterface({
 
       {!isProcessDetailsSidebarOpen &&
         isProcessingRunning &&
-        latestAssistantMessage && (
+        latestAssistantMessage &&
+        latestAssistantMessageMode !== "single" && (
           <button
             type="button"
             className="fixed bottom-24 right-6 z-20 rounded-full border border-slate-900 bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-lg transition-colors hover:border-black hover:bg-black"

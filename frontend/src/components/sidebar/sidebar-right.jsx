@@ -1,4 +1,5 @@
 import { IconX } from "@tabler/icons-react";
+import ReactMarkdown from "react-markdown";
 import Stage1 from "../stages/stage-1";
 import Stage2 from "../stages/stage-2";
 import Stage3 from "../stages/stage-3";
@@ -39,6 +40,29 @@ function formatUsageTokensOnly(usage, t, language) {
   });
 }
 
+function normalizeWorkflowMode(mode) {
+  if (typeof mode !== "string") return null;
+  const normalized = mode.trim().toLowerCase();
+  if (normalized === "single") return "single";
+  if (normalized === "council") return "council";
+  return null;
+}
+
+function resolveWorkflowMode(message) {
+  const metadataMode = normalizeWorkflowMode(message?.metadata?.workflow_mode);
+  if (metadataMode) return metadataMode;
+  const stage3Mode = normalizeWorkflowMode(message?.stage3?.workflow_mode);
+  if (stage3Mode) return stage3Mode;
+  return "council";
+}
+
+function getShortModelName(model, t) {
+  if (typeof model !== "string" || !model) {
+    return t("stage.councilChairmanFallback");
+  }
+  return model.split("/")[1] || model;
+}
+
 function StagePlaceholder({ text }) {
   return (
     <div className="rounded-lg border border-dashed border-slate-300 bg-white px-4 py-3 text-sm text-slate-500">
@@ -55,6 +79,70 @@ export default function SidebarRight({
   className = "",
 }) {
   if (!message) return null;
+  const workflowMode = resolveWorkflowMode(message);
+
+  if (workflowMode === "single") {
+    return (
+      <aside
+        className={`flex h-full min-h-0 w-full flex-col bg-slate-50 ${className}`.trim()}
+      >
+        <div className="border-b border-slate-200 px-5 py-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-xs font-semibold uppercase tracking-[0.4px] text-slate-500">
+              {t("chat.processDetailsTitle")}
+            </div>
+            <button
+              type="button"
+              className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-600 transition-colors hover:border-slate-400 hover:text-slate-900"
+              aria-label={t("common.close")}
+              onClick={onClose}
+            >
+              <IconX size={15} />
+            </button>
+          </div>
+          <p className="mt-2 text-sm text-slate-600">
+            {t("chat.singleModeDetailsTitle")}
+          </p>
+          {message.stage3?.model && (
+            <p className="mt-1 text-xs text-slate-500">
+              {t("chat.singleModeModelLabel", {
+                model: getShortModelName(message.stage3.model, t),
+              })}
+            </p>
+          )}
+          {(message.metadata?.usage || message.stage3?.usage) && (
+            <p className="mt-1 text-sm text-slate-600">
+              {t("chat.turnUsage", {
+                value: formatUsageTokensOnly(
+                  message.metadata?.usage || message.stage3?.usage,
+                  t,
+                  language,
+                ),
+              })}
+            </p>
+          )}
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4">
+          {message.stage3?.response ? (
+            <div className="rounded-lg border border-slate-200 bg-white p-3.5">
+              <div className="markdown-content text-sm leading-relaxed text-slate-800">
+                <ReactMarkdown>{message.stage3.response}</ReactMarkdown>
+              </div>
+            </div>
+          ) : (
+            <StagePlaceholder
+              text={
+                message.loading?.stage3
+                  ? t("chat.stage3Processing")
+                  : t("chat.stage3NotAvailable")
+              }
+            />
+          )}
+        </div>
+      </aside>
+    );
+  }
 
   const stages = [
     {

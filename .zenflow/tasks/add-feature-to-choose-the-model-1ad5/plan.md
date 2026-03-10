@@ -93,7 +93,8 @@ Save to `{@artifacts_path}/plan.md`. If the feature is trivial and doesn't warra
   - `uv run python -m unittest backend.tests.test_conversation_model_modes`
   - `uv run python -m unittest backend.tests.test_openrouter_user_tracking`
 
-### [ ] Step: Frontend Chat Model Selector and Mode-Specific Rendering
+### [x] Step: Frontend Chat Model Selector and Mode-Specific Rendering
+<!-- chat-id: 1f6e5dd2-fe68-4bf4-b19c-3d38fd9dcaa2 -->
 
 - Update frontend API client (`frontend/src/api.js`) for new model and conversation-model endpoints.
 - Update chat orchestration (`frontend/src/App.jsx`) to load model options, persist selection per conversation, and handle mode-aware response rendering.

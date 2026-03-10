@@ -15,6 +15,16 @@ function renderChatInterface(props = {}) {
     onCancelMessage: vi.fn(),
     canCancelMessage: false,
     isLoading: false,
+    availableModels: [],
+    isModelOptionsLoading: false,
+    conversationModelSelection: {
+      model_mode: "council",
+      selected_model: null,
+      selected_model_title: null,
+    },
+    isUpdatingConversationModel: false,
+    conversationModelError: "",
+    onChangeConversationModel: vi.fn(),
   };
 
   return render(
@@ -28,6 +38,15 @@ describe("ChatInterface composer actions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     HTMLElement.prototype.scrollIntoView = vi.fn();
+    if (!Element.prototype.hasPointerCapture) {
+      Element.prototype.hasPointerCapture = () => false;
+    }
+    if (!Element.prototype.setPointerCapture) {
+      Element.prototype.setPointerCapture = () => {};
+    }
+    if (!Element.prototype.releasePointerCapture) {
+      Element.prototype.releasePointerCapture = () => {};
+    }
   });
 
   afterEach(() => {
@@ -115,6 +134,61 @@ describe("ChatInterface composer actions", () => {
     expect(onSendMessage).toHaveBeenCalledWith("Any updates?", [], {
       useWebSearch: true,
     });
+  });
+
+  it("calls model selection callback when a managed model is selected", async () => {
+    const onChangeConversationModel = vi.fn();
+
+    const { container } = renderChatInterface({
+      availableModels: [
+        {
+          id: 1,
+          title: "GPT-5.1",
+          model: "openai/gpt-5.1",
+          category: "openai",
+        },
+      ],
+      onChangeConversationModel,
+    });
+
+    const hiddenSelect = container.querySelector("select[aria-hidden='true']");
+    expect(hiddenSelect).toBeTruthy();
+    fireEvent.change(hiddenSelect, {
+      target: { value: "openai/gpt-5.1" },
+    });
+
+    expect(onChangeConversationModel).toHaveBeenCalledTimes(1);
+    expect(onChangeConversationModel).toHaveBeenCalledWith("openai/gpt-5.1");
+  });
+
+  it("renders single-mode assistant turns without process details actions", () => {
+    renderChatInterface({
+      conversation: {
+        id: "conv-1",
+        messages: [
+          { role: "user", content: "Tell me a quick summary" },
+          {
+            role: "assistant",
+            stage1: [],
+            stage2: [],
+            stage3: {
+              model: "openai/gpt-5.1",
+              response: "Here is a direct response.",
+              workflow_mode: "single",
+            },
+            metadata: { workflow_mode: "single" },
+          },
+        ],
+      },
+      conversationModelSelection: {
+        model_mode: "single",
+        selected_model: "openai/gpt-5.1",
+        selected_model_title: "GPT-5.1",
+      },
+    });
+
+    expect(screen.getByText("Model Answer")).toBeTruthy();
+    expect(screen.queryByText("View process details")).toBeNull();
   });
 });
 

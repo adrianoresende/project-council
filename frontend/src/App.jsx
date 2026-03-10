@@ -82,6 +82,104 @@ function normalizeUploadedFilesForMessage(files) {
     }));
 }
 
+function normalizeModelMode(mode) {
+  if (typeof mode !== 'string') return 'council';
+  const normalized = mode.trim().toLowerCase();
+  if (normalized === 'single') return 'single';
+  return 'council';
+}
+
+function normalizeOptionalModelId(model) {
+  if (typeof model !== 'string') return null;
+  const normalized = model.trim();
+  if (!normalized) return null;
+  return normalized;
+}
+
+function normalizeConversationModelSelection(selection) {
+  const modelMode = normalizeModelMode(selection?.model_mode);
+  if (modelMode !== 'single') {
+    return {
+      model_mode: 'council',
+      selected_model: null,
+      selected_model_title: null,
+    };
+  }
+
+  const selectedModel = normalizeOptionalModelId(selection?.selected_model);
+  if (!selectedModel) {
+    return {
+      model_mode: 'council',
+      selected_model: null,
+      selected_model_title: null,
+    };
+  }
+
+  const selectedModelTitle =
+    typeof selection?.selected_model_title === 'string' &&
+    selection.selected_model_title.trim()
+      ? selection.selected_model_title.trim()
+      : null;
+
+  return {
+    model_mode: 'single',
+    selected_model: selectedModel,
+    selected_model_title: selectedModelTitle,
+  };
+}
+
+function readConversationModelSelection(conversation) {
+  if (!conversation || typeof conversation !== 'object') return null;
+  const hasModelField =
+    typeof conversation.model_mode === 'string' ||
+    typeof conversation.selected_model === 'string' ||
+    typeof conversation.selected_model_title === 'string';
+  if (!hasModelField) return null;
+  return normalizeConversationModelSelection(conversation);
+}
+
+function mergeConversationSelectionMap(previousSelections, conversations) {
+  if (!Array.isArray(conversations) || conversations.length === 0) {
+    return previousSelections;
+  }
+
+  const nextSelections = { ...previousSelections };
+  let hasChange = false;
+  conversations.forEach((conversation) => {
+    if (!(conversation && typeof conversation === 'object')) return;
+    if (typeof conversation.id !== 'string' || !conversation.id) return;
+    const selection = readConversationModelSelection(conversation);
+    if (!selection) return;
+    nextSelections[conversation.id] = selection;
+    hasChange = true;
+  });
+  return hasChange ? nextSelections : previousSelections;
+}
+
+function applyConversationSelectionToList(list, conversationId, selection) {
+  if (!Array.isArray(list) || !conversationId) return list;
+  return list.map((conversation) =>
+    conversation?.id === conversationId
+      ? { ...conversation, ...selection }
+      : conversation,
+  );
+}
+
+function resolveConversationModelSelection(conversation, selectionByConversationId) {
+  const conversationId = conversation?.id;
+  if (typeof conversationId === 'string' && selectionByConversationId[conversationId]) {
+    return selectionByConversationId[conversationId];
+  }
+
+  const storedSelection = readConversationModelSelection(conversation);
+  if (storedSelection) return storedSelection;
+  return {
+    model_mode: 'council',
+    selected_model: null,
+    selected_model_title: null,
+  };
+}
+
 function App() {
   const { t } = useI18n();
   const [user, setUser] = useState(null);
@@ -99,6 +197,12 @@ function App() {
   const [accountMessage, setAccountMessage] = useState('');
   const [currentConversationId, setCurrentConversationId] = useState(null);
   const [currentConversation, setCurrentConversation] = useState(null);
+  const [availableModels, setAvailableModels] = useState([]);
+  const [conversationModelSelections, setConversationModelSelections] = useState({});
+  const [isModelOptionsLoading, setIsModelOptionsLoading] = useState(false);
+  const [isUpdatingConversationModel, setIsUpdatingConversationModel] =
+    useState(false);
+  const [conversationModelError, setConversationModelError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [canCancelMessage, setCanCancelMessage] = useState(false);
   const latestConversationRequestRef = useRef(0);
@@ -124,6 +228,11 @@ function App() {
     setAccountMessage('');
     setCurrentConversationId(null);
     setCurrentConversation(null);
+    setAvailableModels([]);
+    setConversationModelSelections({});
+    setIsModelOptionsLoading(false);
+    setIsUpdatingConversationModel(false);
+    setConversationModelError('');
     setIsLoading(false);
     setCanCancelMessage(false);
     hasReceivedFirstStreamSignalRef.current = false;
@@ -175,6 +284,9 @@ function App() {
       const cached = conversationListCacheRef.current[tab];
       if (Array.isArray(cached)) {
         setConversations(cached);
+        setConversationModelSelections((previous) =>
+          mergeConversationSelectionMap(previous, cached)
+        );
         return;
       }
     }
@@ -190,6 +302,9 @@ function App() {
       }
       conversationListCacheRef.current[tab] = convs;
       setConversations(convs);
+      setConversationModelSelections((previous) =>
+        mergeConversationSelectionMap(previous, convs)
+      );
     } catch (error) {
       if (error.status === 401) {
         handleUnauthorized();
@@ -227,6 +342,22 @@ function App() {
     }
   }, [handleUnauthorized]);
 
+  const loadModelOptions = useCallback(async () => {
+    setIsModelOptionsLoading(true);
+    try {
+      const models = await api.getModels();
+      setAvailableModels(Array.isArray(models) ? models : []);
+    } catch (error) {
+      if (error.status === 401) {
+        handleUnauthorized();
+        return;
+      }
+      console.error('Failed to load available models:', error);
+    } finally {
+      setIsModelOptionsLoading(false);
+    }
+  }, [handleUnauthorized]);
+
   useEffect(() => {
     const onPlanUpdated = () => {
       loadAccountSummary();
@@ -240,7 +371,26 @@ function App() {
   const loadConversation = useCallback(async (id) => {
     try {
       const conv = await api.getConversation(id);
-      setCurrentConversation(conv);
+      const selection = readConversationModelSelection(conv);
+      if (selection && typeof id === 'string') {
+        setConversationModelSelections((previous) => ({
+          ...previous,
+          [id]: selection,
+        }));
+      }
+      setCurrentConversation((previous) => {
+        const currentSelection =
+          selection ||
+          (previous && previous.id === id
+            ? readConversationModelSelection(previous)
+            : null);
+        if (!currentSelection) return conv;
+        return {
+          ...(previous && previous.id === id ? previous : {}),
+          ...conv,
+          ...currentSelection,
+        };
+      });
     } catch (error) {
       if (error.status === 401) {
         handleUnauthorized();
@@ -315,7 +465,12 @@ function App() {
           setUserPlan(inferPlanFromUser(currentUser));
           setUserRole(inferRoleFromUser(currentUser));
           setAuthEntryError('');
-          await Promise.all([loadConversations(), loadCredits(), loadAccountSummary()]);
+          await Promise.all([
+            loadConversations(),
+            loadCredits(),
+            loadAccountSummary(),
+            loadModelOptions(),
+          ]);
         } catch {
           handleUnauthorized();
         }
@@ -326,7 +481,13 @@ function App() {
     };
 
     bootstrapSession();
-  }, [handleUnauthorized, loadConversations, loadCredits, loadAccountSummary]);
+  }, [
+    handleUnauthorized,
+    loadConversations,
+    loadCredits,
+    loadAccountSummary,
+    loadModelOptions,
+  ]);
 
   useEffect(() => {
     if (!user) return;
@@ -341,6 +502,10 @@ function App() {
       loadConversation(currentConversationId);
     }
   }, [user, currentConversationId, loadConversation]);
+
+  useEffect(() => {
+    setConversationModelError('');
+  }, [currentConversationId]);
 
   useEffect(() => {
     if (user && mainView === 'chat') {
@@ -362,8 +527,17 @@ function App() {
       autoConversationBootstrapInFlightRef.current = true;
       try {
         const newConv = await api.createConversation();
+        const defaultSelection = normalizeConversationModelSelection(newConv);
         setCurrentConversationId(newConv.id);
-        setCurrentConversation(newConv);
+        setCurrentConversation({
+          ...newConv,
+          ...defaultSelection,
+        });
+        setConversationModelSelections((previous) => ({
+          ...previous,
+          [newConv.id]: defaultSelection,
+        }));
+        setConversationModelError('');
         loadCredits();
       } catch (error) {
         if (error.status === 401) {
@@ -412,7 +586,12 @@ function App() {
       window.history.replaceState({}, '', getPathFromMainView(allowedView));
     }
     setMainView(allowedView);
-    await Promise.all([loadConversations(), loadCredits(), loadAccountSummary()]);
+    await Promise.all([
+      loadConversations(),
+      loadCredits(),
+      loadAccountSummary(),
+      loadModelOptions(),
+    ]);
   };
 
   const handleLogout = () => {
@@ -432,6 +611,7 @@ function App() {
     setAccountMessage('');
     try {
       const newConv = await api.createConversation();
+      const defaultSelection = normalizeConversationModelSelection(newConv);
       if (mainView !== 'chat') {
         window.history.pushState({}, '', '/');
         setMainView('chat');
@@ -439,7 +619,15 @@ function App() {
       // Keep new conversations out of the sidebar list until the first message
       // is sent and persisted.
       setCurrentConversationId(newConv.id);
-      setCurrentConversation(newConv);
+      setCurrentConversation({
+        ...newConv,
+        ...defaultSelection,
+      });
+      setConversationModelSelections((previous) => ({
+        ...previous,
+        [newConv.id]: defaultSelection,
+      }));
+      setConversationModelError('');
       loadCredits();
     } catch (error) {
       if (error.status === 401) {
@@ -488,6 +676,7 @@ function App() {
     setConversationListTab(tab);
     setCurrentConversationId(null);
     setCurrentConversation(null);
+    setConversationModelError('');
   };
 
   const handleArchiveConversation = async (conversationId, archived) => {
@@ -508,6 +697,83 @@ function App() {
     }
   };
 
+  const currentConversationModelSelection = resolveConversationModelSelection(
+    currentConversation,
+    conversationModelSelections,
+  );
+
+  const handleChangeConversationModel = useCallback(async (nextValue) => {
+    const conversationId = currentConversationRef.current?.id;
+    if (!conversationId || isLoading || isUpdatingConversationModel) {
+      return;
+    }
+
+    const normalizedSelectionValue = normalizeOptionalModelId(nextValue);
+    const requestedSelection =
+      normalizedSelectionValue && normalizedSelectionValue !== 'council'
+        ? {
+          model_mode: 'single',
+          selected_model: normalizedSelectionValue,
+        }
+        : {
+          model_mode: 'council',
+          selected_model: null,
+        };
+
+    setConversationModelError('');
+    setIsUpdatingConversationModel(true);
+    try {
+      const response = await api.updateConversationModelSelection(
+        conversationId,
+        requestedSelection,
+      );
+      const normalizedSelection = normalizeConversationModelSelection(response);
+
+      setConversationModelSelections((previous) => ({
+        ...previous,
+        [conversationId]: normalizedSelection,
+      }));
+
+      setCurrentConversation((previous) => {
+        if (!previous || previous.id !== conversationId) return previous;
+        return {
+          ...previous,
+          ...normalizedSelection,
+        };
+      });
+
+      setConversations((previous) =>
+        applyConversationSelectionToList(
+          previous,
+          conversationId,
+          normalizedSelection,
+        ),
+      );
+      conversationListCacheRef.current = {
+        chats: applyConversationSelectionToList(
+          conversationListCacheRef.current.chats,
+          conversationId,
+          normalizedSelection,
+        ),
+        arquived: applyConversationSelectionToList(
+          conversationListCacheRef.current.arquived,
+          conversationId,
+          normalizedSelection,
+        ),
+      };
+    } catch (error) {
+      if (error.status === 401) {
+        handleUnauthorized();
+        return;
+      }
+      const fallbackMessage = t('chat.modelSelectorSaveError');
+      setConversationModelError(error.message || fallbackMessage);
+      console.error('Failed to update conversation model selection:', error);
+    } finally {
+      setIsUpdatingConversationModel(false);
+    }
+  }, [handleUnauthorized, isLoading, isUpdatingConversationModel, t]);
+
   const isConversationsLoading = pendingConversationLoads > 0;
 
   const handleSendMessage = async (content, files = [], options = {}) => {
@@ -515,6 +781,15 @@ function App() {
     const activeConversationId = currentConversationId;
     const normalizedFiles = Array.isArray(files) ? files : [];
     const useWebSearch = Boolean(options?.useWebSearch);
+    const activeConversationSelection =
+      conversationModelSelections[activeConversationId]
+      || readConversationModelSelection(currentConversationRef.current)
+      || {
+        model_mode: 'council',
+        selected_model: null,
+        selected_model_title: null,
+      };
+    const optimisticWorkflowMode = activeConversationSelection.model_mode;
     const safeFilesForUI = normalizeUploadedFilesForMessage(normalizedFiles);
     const abortController = new AbortController();
     streamAbortControllerRef.current = abortController;
@@ -534,7 +809,9 @@ function App() {
         stage1: null,
         stage2: null,
         stage3: null,
-        metadata: null,
+        metadata: {
+          workflow_mode: optimisticWorkflowMode,
+        },
         loading: {
           stage1: false,
           stage2: false,
@@ -683,6 +960,8 @@ function App() {
                 response: t('chat.generationStopped'),
                 usage: emptyUsageSummary(),
                 cancelled: true,
+                workflow_mode:
+                  lastMsg?.metadata?.workflow_mode || optimisticWorkflowMode,
               };
             }
           }
@@ -780,6 +1059,12 @@ function App() {
       userRole={userRole}
       onLogout={handleLogout}
       conversation={currentConversation}
+      availableModels={availableModels}
+      isModelOptionsLoading={isModelOptionsLoading}
+      conversationModelSelection={currentConversationModelSelection}
+      isUpdatingConversationModel={isUpdatingConversationModel}
+      conversationModelError={conversationModelError}
+      onChangeConversationModel={handleChangeConversationModel}
       onSendMessage={handleSendMessage}
       onCancelMessage={handleCancelMessage}
       canCancelMessage={canCancelMessage}

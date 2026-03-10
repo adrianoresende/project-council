@@ -29,10 +29,12 @@ vi.mock('./api', () => ({
     getConversation: vi.fn(),
     getCredits: vi.fn(),
     getCurrentUser: vi.fn(),
+    getModels: vi.fn(),
     listConversations: vi.fn(),
     sendMessageStream: vi.fn(),
     setAccessToken: vi.fn(),
     setConversationArchived: vi.fn(),
+    updateConversationModelSelection: vi.fn(),
   },
 }));
 
@@ -60,6 +62,7 @@ describe('App OAuth bootstrap regression coverage', () => {
     api.listConversations.mockResolvedValue([]);
     api.getCredits.mockResolvedValue({ credits: 0 });
     api.getAccountSummary.mockResolvedValue({ plan: 'free' });
+    api.getModels.mockResolvedValue([]);
     readOAuthCallbackErrorFromUrl.mockReturnValue('');
     resolveSupabaseSession.mockResolvedValue({ session: null, error: null });
     signOutSupabaseSession.mockResolvedValue(undefined);
