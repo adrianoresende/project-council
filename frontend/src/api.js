@@ -191,6 +191,42 @@ export const api = {
     return request("/api/admin/system/models");
   },
 
+  async getAdminOpenrouterModels(query = "", limit = 50) {
+    const params = new URLSearchParams();
+    const normalizedQuery =
+      typeof query === "string" ? query.trim() : String(query || "").trim();
+    if (normalizedQuery) {
+      params.set("query", normalizedQuery);
+    }
+    params.set("limit", String(limit));
+    const queryString = params.toString();
+    return request(`/api/admin/openrouter/models?${queryString}`);
+  },
+
+  async getAdminModels() {
+    return request("/api/admin/models");
+  },
+
+  async createAdminModel(payload) {
+    return request("/api/admin/models", {
+      method: "POST",
+      body: JSON.stringify(payload || {}),
+    });
+  },
+
+  async updateAdminModel(appModelId, payload) {
+    return request(`/api/admin/models/${encodeURIComponent(appModelId)}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload || {}),
+    });
+  },
+
+  async deleteAdminModel(appModelId) {
+    return request(`/api/admin/models/${encodeURIComponent(appModelId)}`, {
+      method: "DELETE",
+    });
+  },
+
   async getAdminFeedback(limit = 200) {
     return request(`/api/admin/feedback?limit=${encodeURIComponent(limit)}`);
   },

@@ -104,7 +104,8 @@ Save to `{@artifacts_path}/plan.md`. If the feature is trivial and doesn't warra
 - Verify with:
   - `cd frontend && npm run test -- src/components/chat-interface/chat-interface.test.jsx`
 
-### [ ] Step: Frontend Admin Models Tab and Final Verification Report
+### [x] Step: Frontend Admin Models Tab and Final Verification Report
+<!-- chat-id: f17e041b-5c66-4773-a7a7-39401992e8b0 -->
 
 - Extend admin page (`frontend/src/pages/admin/page.jsx`) with new `Models` tab:
   - OpenRouter search/add flow

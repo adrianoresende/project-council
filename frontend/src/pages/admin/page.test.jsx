@@ -10,6 +10,11 @@ vi.mock('../../api', () => ({
     getAdminUsers: vi.fn(),
     getAdminSystemModels: vi.fn(),
     getAdminFeedback: vi.fn(),
+    getAdminOpenrouterModels: vi.fn(),
+    getAdminModels: vi.fn(),
+    createAdminModel: vi.fn(),
+    updateAdminModel: vi.fn(),
+    deleteAdminModel: vi.fn(),
     getAdminUser: vi.fn(),
     updateAdminUserPlan: vi.fn(),
     resetAdminUserQuota: vi.fn(),
@@ -32,6 +37,38 @@ const baseFeedback = {
   date_sent: '2026-03-01T09:30:00+00:00',
 };
 
+const baseManagedModels = [
+  {
+    id: 101,
+    title: 'GPT-5.1',
+    model: 'openai/gpt-5.1',
+    category: 'openai',
+    active: true,
+  },
+  {
+    id: 202,
+    title: 'Claude Sonnet 4.5',
+    model: 'anthropic/claude-sonnet-4.5',
+    category: 'anthropic',
+    active: false,
+  },
+];
+
+const openrouterSearchRows = [
+  {
+    id: 'openai/gpt-5.1',
+    name: 'GPT-5.1',
+    category: 'openai',
+    context_length: 400000,
+  },
+  {
+    id: 'openai/gpt-5-nano',
+    name: 'GPT-5 Nano',
+    category: 'openai',
+    context_length: 128000,
+  },
+];
+
 function renderPage() {
   return render(
     <I18nProvider>
@@ -50,6 +87,11 @@ describe('AdminPage drawer actions', () => {
       chairman_model: 'google/gemini-3-pro-preview',
     });
     api.getAdminFeedback.mockResolvedValue([]);
+    api.getAdminOpenrouterModels.mockResolvedValue(openrouterSearchRows);
+    api.getAdminModels.mockResolvedValue(baseManagedModels);
+    api.createAdminModel.mockResolvedValue(baseManagedModels[0]);
+    api.updateAdminModel.mockResolvedValue(baseManagedModels[0]);
+    api.deleteAdminModel.mockResolvedValue({ id: 202, deleted: true });
     api.getAdminUser.mockResolvedValue(baseUser);
     api.updateAdminUserPlan.mockResolvedValue({
       ...baseUser,
@@ -227,5 +269,115 @@ describe('AdminPage drawer actions', () => {
       expect(api.getAdminFeedback).toHaveBeenCalledTimes(1);
     });
     expect(await screen.findByText('feedback unavailable')).toBeTruthy();
+  });
+
+  it('loads managed models when switching to models tab', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByRole('button', {
+      name: 'Open user details for alpha@example.com',
+    });
+    await user.click(screen.getByRole('button', { name: 'Models' }));
+
+    await waitFor(() => {
+      expect(api.getAdminModels).toHaveBeenCalledTimes(1);
+    });
+    expect(await screen.findByText('OpenRouter model catalog')).toBeTruthy();
+    expect(screen.getByText('openai/gpt-5.1')).toBeTruthy();
+    expect(screen.getByText('anthropic/claude-sonnet-4.5')).toBeTruthy();
+  });
+
+  it('searches OpenRouter and adds a model to managed list', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByRole('button', {
+      name: 'Open user details for alpha@example.com',
+    });
+    await user.click(screen.getByRole('button', { name: 'Models' }));
+    await waitFor(() => {
+      expect(api.getAdminModels).toHaveBeenCalledTimes(1);
+    });
+
+    const searchInput = screen.getByLabelText('Search models');
+    await user.type(searchInput, 'gpt-5');
+    await user.click(screen.getByRole('button', { name: 'Search' }));
+
+    await waitFor(() => {
+      expect(api.getAdminOpenrouterModels).toHaveBeenCalledWith('gpt-5', 50);
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Add model' }));
+
+    await waitFor(() => {
+      expect(api.createAdminModel).toHaveBeenCalledWith({
+        title: 'GPT-5.1',
+        model: 'openai/gpt-5.1',
+        category: 'openai',
+        active: true,
+      });
+    });
+    expect(await screen.findByText('Model GPT-5.1 added.')).toBeTruthy();
+    expect(api.getAdminModels).toHaveBeenCalledTimes(2);
+  });
+
+  it('edits managed model title and category', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByRole('button', {
+      name: 'Open user details for alpha@example.com',
+    });
+    await user.click(screen.getByRole('button', { name: 'Models' }));
+    await waitFor(() => {
+      expect(api.getAdminModels).toHaveBeenCalledTimes(1);
+    });
+
+    const modelRow = screen.getByText('openai/gpt-5.1').closest('tr');
+    await user.click(within(modelRow).getByRole('button', { name: 'Edit' }));
+
+    const titleInput = await screen.findByLabelText('Title');
+    const categoryInput = screen.getByLabelText('Category');
+    await user.clear(titleInput);
+    await user.type(titleInput, 'GPT-5.1 Turbo');
+    await user.clear(categoryInput);
+    await user.type(categoryInput, 'openai-premium');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      expect(api.updateAdminModel).toHaveBeenCalledWith(101, {
+        title: 'GPT-5.1 Turbo',
+        category: 'openai-premium',
+      });
+    });
+    expect(await screen.findByText('Model GPT-5.1 Turbo updated.')).toBeTruthy();
+  });
+
+  it('disables and removes managed models from the table', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByRole('button', {
+      name: 'Open user details for alpha@example.com',
+    });
+    await user.click(screen.getByRole('button', { name: 'Models' }));
+    await waitFor(() => {
+      expect(api.getAdminModels).toHaveBeenCalledTimes(1);
+    });
+
+    const activeRow = screen.getByText('openai/gpt-5.1').closest('tr');
+    await user.click(within(activeRow).getByRole('button', { name: 'Disable' }));
+    await waitFor(() => {
+      expect(api.updateAdminModel).toHaveBeenCalledWith(101, { active: false });
+    });
+    expect(await screen.findByText('Model GPT-5.1 disabled.')).toBeTruthy();
+
+    const inactiveRow = screen.getByText('anthropic/claude-sonnet-4.5').closest('tr');
+    await user.click(within(inactiveRow).getByRole('button', { name: 'Remove' }));
+    await waitFor(() => {
+      expect(api.deleteAdminModel).toHaveBeenCalledWith(202);
+    });
+    expect(await screen.findByText('Model Claude Sonnet 4.5 removed.')).toBeTruthy();
   });
 });
