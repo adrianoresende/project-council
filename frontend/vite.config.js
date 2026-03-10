@@ -5,17 +5,22 @@ import path from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 
-const DEFAULT_PREVIEW_ALLOWED_HOSTS = ['front-end-development-2ed0.up.railway.app']
+const LOCAL_PREVIEW_ALLOWED_HOSTS = ['localhost', '127.0.0.1']
 
 const previewAllowedHostsFromEnv = (process.env.VITE_PREVIEW_ALLOWED_HOSTS ?? '')
   .split(',')
   .map((host) => host.trim())
   .filter(Boolean)
 
-const previewAllowedHosts =
-  previewAllowedHostsFromEnv.length > 0
-    ? previewAllowedHostsFromEnv
-    : DEFAULT_PREVIEW_ALLOWED_HOSTS
+const railwayPublicDomain = (process.env.RAILWAY_PUBLIC_DOMAIN ?? '').trim()
+
+const previewAllowedHosts = Array.from(
+  new Set([
+    ...LOCAL_PREVIEW_ALLOWED_HOSTS,
+    ...(railwayPublicDomain ? [railwayPublicDomain] : []),
+    ...previewAllowedHostsFromEnv,
+  ]),
+)
 
 // https://vite.dev/config/
 export default defineConfig({

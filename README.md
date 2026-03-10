@@ -191,9 +191,13 @@ npm run dev
 
 Then open http://localhost:5173 in your browser.
 
-## Railway Production Deployment (Backend + Frontend)
+## Railway Production Deployment (Backend + Frontend + Website)
 
-Deploy this project as two Railway services from the same repository.
+Deploy this project as three Railway services from the same repository.
+Recommended public domains:
+
+- `app.X.com` -> app frontend (and API entrypoint used by the app)
+- `www.X.com` -> website frontend
 
 ### 1. Backend API service (repo root)
 
@@ -211,7 +215,7 @@ OPENROUTER_API_KEY=sk-or-v1-...
 SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
 SUPABASE_API_KEY_SECRET=sb_secret_...
 COUNCIL_ENV=production
-CORS_ALLOW_ORIGINS=https://front-end-development-2ed0.up.railway.app
+CORS_ALLOW_ORIGINS=https://app.X.com
 ```
 
 For first successful boot, `OPENROUTER_API_KEY`, `SUPABASE_URL`, and `SUPABASE_API_KEY_SECRET` must be set.
@@ -242,24 +246,48 @@ Why `npm install` instead of `npm ci`:
 3. Set frontend environment variables in Railway:
 
 ```bash
-VITE_API_BASE_URL=https://YOUR_BACKEND_DOMAIN.up.railway.app
+VITE_API_BASE_URL=https://app.X.com
 VITE_SUPABASE_ANON_KEY=eyJ...
-VITE_SUPABASE_REDIRECT_URL=https://YOUR_FRONTEND_DOMAIN.up.railway.app/auth/callback
-VITE_PREVIEW_ALLOWED_HOSTS=front-end-production-4235.up.railway.app,another-frontend-domain.up.railway.app
+VITE_SUPABASE_REDIRECT_URL=https://app.X.com/auth/callback
+VITE_PREVIEW_ALLOWED_HOSTS=app.X.com
 ```
 
 `VITE_PREVIEW_ALLOWED_HOSTS` is a comma-separated host allowlist used by `vite preview`.
-If unset, the frontend falls back to allowing `front-end-production-4235.up.railway.app`.
+If unset, the frontend allows localhost hosts and Railway's `RAILWAY_PUBLIC_DOMAIN`.
 `VITE_SUPABASE_REDIRECT_URL` must match a configured Supabase redirect URL.
+If you keep backend on a separate host (for example `api.X.com`), set
+`VITE_API_BASE_URL=https://api.X.com` instead.
 
 4. Deploy and open the frontend public URL.
 
-### 3. Wiring checklist
+### 3. Website service (`website` root directory)
 
-- Backend `CORS_ALLOW_ORIGINS` must include the deployed frontend URL.
-- Frontend `VITE_API_BASE_URL` must point to the deployed backend URL.
+1. Create a third Railway service from the same repo and set **Root Directory** to `website`.
+2. The committed `website/railway.toml` defines build and start:
+
+```bash
+NPM_CONFIG_PRODUCTION=false npm install --include=dev --no-audit --no-fund && npm run build
+npm run preview -- --host 0.0.0.0 --port ${PORT:-4173}
+```
+
+3. Set website environment variables in Railway:
+
+```bash
+VITE_PREVIEW_ALLOWED_HOSTS=www.X.com
+```
+
+If unset, the website allows localhost hosts and Railway's `RAILWAY_PUBLIC_DOMAIN`.
+
+4. Attach the custom domain `www.X.com` to this website service.
+
+### 4. Wiring checklist
+
+- Attach `app.X.com` to the app frontend service.
+- Backend `CORS_ALLOW_ORIGINS` must include `https://app.X.com` (and any other app origins).
+- Frontend `VITE_API_BASE_URL` must point to the backend entrypoint used by the app.
 - Frontend `VITE_SUPABASE_REDIRECT_URL` must be listed in Supabase **Authentication -> URL Configuration -> Redirect URLs**.
-- If frontend domain changes, update backend `CORS_ALLOW_ORIGINS` and redeploy backend.
+- Attach `www.X.com` to the website service.
+- If app domain changes, update backend `CORS_ALLOW_ORIGINS`, frontend `VITE_PREVIEW_ALLOWED_HOSTS`, and Supabase redirect URLs.
 
 ## Credits
 
