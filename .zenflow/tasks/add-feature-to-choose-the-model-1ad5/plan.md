@@ -20,7 +20,8 @@ If you are blocked and need user clarification, mark the current step with `[!]`
 
 ## Workflow Steps
 
-### [ ] Step: Technical Specification
+### [x] Step: Technical Specification
+<!-- chat-id: a9f20383-633e-4b7a-9376-0052ae5be5fa -->
 
 Assess the task's difficulty, as underestimating it leads to poor outcomes.
 - easy: Straightforward implementation, trivial bug fix or feature
@@ -54,16 +55,59 @@ Save to `{@artifacts_path}/plan.md`. If the feature is trivial and doesn't warra
 
 ---
 
-### [ ] Step: Implementation
+### [ ] Step: Backend Data Model and Storage Foundation
 
-Implement the task according to the technical specification and general engineering best practices.
+- Update `backend/supabase_schema.sql` to add `app_models` table and conversation model selection columns.
+- Extend `backend/services/supabase/storage.py` to support:
+  - model catalog CRUD and active model listing
+  - reading/writing conversation model selection fields
+- Add/adjust backend tests in the same step for storage-facing behavior and conversation serialization defaults.
+- Verify with:
+  - `uv run python -m unittest backend.tests.test_admin_models_api`
+  - `uv run python -m unittest backend.tests.test_conversation_model_modes`
 
-1. Break the task into steps where possible.
-2. Implement the required changes in the codebase
-3. If relevant, write unit tests alongside each change.
-4. Run relevant tests and linters in the end of each step.
-5. Perform basic manual verification if applicable.
-6. After completion, write a report to `{@artifacts_path}/report.md` describing:
-   - What was implemented
-   - How the solution was tested
-   - The biggest issues or challenges encountered
+### [ ] Step: Backend APIs for OpenRouter Discovery, Admin Management, and Conversation Mode
+
+- Extend `backend/services/openrouter/client.py` with OpenRouter model discovery support.
+- Update `backend/main.py` with:
+  - `GET /api/admin/openrouter/models`
+  - admin model management endpoints (`GET/POST/PATCH/DELETE /api/admin/models`)
+  - `GET /api/models` for active user-facing model options
+  - `PATCH /api/conversations/{conversation_id}/model` for per-conversation selection
+- Add/update backend API contract tests in the same step (`backend/tests/test_admin_foundation.py`, new model API tests).
+- Verify with:
+  - `uv run python -m unittest backend.tests.test_admin_foundation`
+  - `uv run python -m unittest backend.tests.test_admin_models_api`
+
+### [ ] Step: Mode-Aware Message Execution (Council vs Single Model)
+
+- Update both message endpoints in `backend/main.py` to branch by conversation model mode:
+  - `council`: keep current 3-stage flow
+  - `single`: one-model response flow without stage1/stage2 computation
+- Ensure streaming and non-streaming responses remain contract-compatible and usage/quota logic remains correct.
+- Add/extend tests in the same step for single-mode and council-mode behavior, including error paths.
+- Verify with:
+  - `uv run python -m unittest backend.tests.test_conversation_model_modes`
+  - `uv run python -m unittest backend.tests.test_openrouter_user_tracking`
+
+### [ ] Step: Frontend Chat Model Selector and Mode-Specific Rendering
+
+- Update frontend API client (`frontend/src/api.js`) for new model and conversation-model endpoints.
+- Update chat orchestration (`frontend/src/App.jsx`) to load model options, persist selection per conversation, and handle mode-aware response rendering.
+- Update chat UI (`frontend/src/components/chat-interface/chat-interface.jsx`) to include model select control using shadcn patterns.
+- Update process details rendering (`frontend/src/components/sidebar/sidebar-right.jsx`) to hide stage-focused UX for single-mode turns.
+- Add/update frontend tests in the same step (`chat-interface.test.jsx`, App-adjacent behavior where applicable).
+- Verify with:
+  - `cd frontend && npm run test -- src/components/chat-interface/chat-interface.test.jsx`
+
+### [ ] Step: Frontend Admin Models Tab and Final Verification Report
+
+- Extend admin page (`frontend/src/pages/admin/page.jsx`) with new `Models` tab:
+  - OpenRouter search/add flow
+  - managed model table with edit/remove/disable/activate actions
+- Add i18n entries in `frontend/src/i18n/translations.js` and update admin tests (`frontend/src/pages/admin/page.test.jsx`) in the same step.
+- Run full verification:
+  - `uv run python -m unittest discover -s backend/tests -p "test_*.py"`
+  - `cd frontend && npm run test`
+  - `cd frontend && npm run lint`
+- Write final implementation report to `{@artifacts_path}/report.md` with implemented changes, test evidence, and major challenges.
