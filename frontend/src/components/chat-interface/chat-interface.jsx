@@ -144,19 +144,6 @@ function getMessageWorkflowMode(message) {
   return "council";
 }
 
-function getLatestAssistantMessageIndex(messages) {
-  if (!Array.isArray(messages)) return null;
-
-  for (let i = messages.length - 1; i >= 0; i -= 1) {
-    const message = messages[i];
-    if (message?.role === "assistant") {
-      return i;
-    }
-  }
-
-  return null;
-}
-
 function isMessageProcessing(message) {
   return Boolean(
     message?.loading?.stage1 ||
@@ -366,15 +353,6 @@ export default function ChatInterface({
       ? t("chat.filesMessagePlaceholder")
       : inputPlaceholder;
   const contextPercent = Math.min(100, Math.max(10, selectedFiles.length * 10));
-  const latestAssistantMessageIndex =
-    getLatestAssistantMessageIndex(conversationMessages);
-  const latestAssistantMessage =
-    latestAssistantMessageIndex !== null
-      ? conversationMessages[latestAssistantMessageIndex]
-      : null;
-  const latestAssistantMessageMode = getMessageWorkflowMode(latestAssistantMessage);
-  const isProcessingRunning =
-    isLoading || isMessageProcessing(latestAssistantMessage);
   const selectedProcessDetailsMessage =
     processDetailsMessageIndex !== null
       ? conversationMessages[processDetailsMessageIndex]
@@ -437,8 +415,7 @@ export default function ChatInterface({
             );
             const shouldShowDeliberation = Boolean(
               !isSingleModeTurn &&
-              !isTurnStillProcessing &&
-              (hasAnyDeliberationData || isCancelledTurn),
+              (isTurnStillProcessing || hasAnyDeliberationData || isCancelledTurn),
             );
 
             return (
@@ -534,13 +511,6 @@ export default function ChatInterface({
               </div>
             );
           })}
-
-          {isLoading && activeConversationMode !== "single" && (
-            <div className="flex items-center gap-3 p-4 text-sm text-slate-500">
-              <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-200 border-t-sky-500"></div>
-              <span>{t("chat.consultingCouncil")}</span>
-            </div>
-          )}
 
           <div ref={messagesEndRef} />
         </div>
@@ -779,22 +749,6 @@ export default function ChatInterface({
           </SheetContent>
         </Sheet>
       )}
-
-      {!isProcessDetailsSidebarOpen &&
-        isProcessingRunning &&
-        latestAssistantMessage &&
-        latestAssistantMessageMode !== "single" && (
-          <button
-            type="button"
-            className="fixed bottom-24 right-6 z-20 rounded-full border border-slate-900 bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-lg transition-colors hover:border-black hover:bg-black"
-            onClick={() => {
-              setProcessDetailsMessageIndex(latestAssistantMessageIndex);
-              setIsProcessDetailsSidebarOpen(true);
-            }}
-          >
-            {t("chat.viewProcessDetails")}
-          </button>
-        )}
     </div>
   );
 }

@@ -123,3 +123,11 @@ Save to `{@artifacts_path}/plan.md`. If the feature is trivial and doesn't warra
 - When sending a message, if it's a single model, it should not show the stage 3 feedback.
 - With a council model, when sending a message, it should not automatically open the right sidebar; keep it hidden until the user clicks "view process details," in the middle of the process, or with a final response.
 - Remove the "Consulting the selected model..." feedback.
+
+### [x] Step: Another fix UX
+<!-- chat-id: 81e19710-aba2-4a26-93b5-eb4090553d68 -->
+
+- Remove "Consultando o conselho..."
+- Change the copy "Escrevendo resposta final..." to about models processing.
+- Remove "View process details" float, keep only inside the conversation.
+- On conversation, remove the feedback stage 3 on processing on only model.

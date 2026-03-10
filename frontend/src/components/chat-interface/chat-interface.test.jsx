@@ -219,9 +219,13 @@ describe("ChatInterface composer actions", () => {
       isLoading: true,
     });
 
-    expect(
-      screen.getByRole("button", { name: "View process details" }),
-    ).toBeTruthy();
+    const processDetailsButton = screen.getByRole("button", {
+      name: "View process details",
+    });
+    expect(processDetailsButton).toBeTruthy();
+    expect(processDetailsButton.className).not.toContain("fixed");
+    expect(screen.getByText("Models are processing...")).toBeTruthy();
+    expect(screen.queryByText("Consulting the council...")).toBeNull();
   });
 
   it("does not show stage 3 feedback while single-mode response is processing", () => {
