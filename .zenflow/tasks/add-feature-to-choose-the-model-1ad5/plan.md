@@ -81,7 +81,8 @@ Save to `{@artifacts_path}/plan.md`. If the feature is trivial and doesn't warra
   - `uv run python -m unittest backend.tests.test_admin_foundation`
   - `uv run python -m unittest backend.tests.test_admin_models_api`
 
-### [ ] Step: Mode-Aware Message Execution (Council vs Single Model)
+### [x] Step: Mode-Aware Message Execution (Council vs Single Model)
+<!-- chat-id: 7820b0d9-bb76-4884-9d56-1b0c95350444 -->
 
 - Update both message endpoints in `backend/main.py` to branch by conversation model mode:
   - `council`: keep current 3-stage flow

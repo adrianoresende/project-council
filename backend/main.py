@@ -14,7 +14,7 @@ import asyncio
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .services.supabase import storage
-from .services.openrouter import list_openrouter_models
+from .services.openrouter import list_openrouter_models, query_model
 from .services.supabase.auth import (
     ROLE_ADMIN,
     ensure_default_user_role_metadata,
@@ -674,6 +674,101 @@ def _build_conversation_history(
     return bounded
 
 
+def _resolve_conversation_model_mode(conversation: Dict[str, Any]) -> str:
+    """Resolve persisted conversation mode, defaulting to council for legacy rows."""
+    raw_mode = conversation.get("model_mode")
+    if not isinstance(raw_mode, str):
+        return "council"
+    normalized_mode = raw_mode.strip().lower()
+    if normalized_mode in {"council", "single"}:
+        return normalized_mode
+    return "council"
+
+
+def _build_single_mode_messages(
+    user_query: str,
+    *,
+    conversation_history: List[Dict[str, str]] | None = None,
+    user_attachments: List[Dict[str, Any]] | None = None,
+) -> List[Dict[str, Any]]:
+    """Build a single-model chat prompt with optional history and attachments."""
+    messages: List[Dict[str, Any]] = [
+        {
+            "role": "system",
+            "content": (
+                "You are participating in an ongoing user conversation. "
+                "Use prior turns to preserve context and subject continuity, "
+                "unless the user explicitly changes topic."
+            ),
+        }
+    ]
+    if isinstance(conversation_history, list):
+        for item in conversation_history:
+            if not isinstance(item, dict):
+                continue
+            role = item.get("role")
+            content = item.get("content")
+            if role in {"user", "assistant"} and isinstance(content, str) and content.strip():
+                messages.append({"role": role, "content": content})
+
+    if isinstance(user_attachments, list) and user_attachments:
+        user_content_parts: List[Dict[str, Any]] = [{"type": "text", "text": user_query}]
+        for attachment in user_attachments:
+            if isinstance(attachment, dict):
+                user_content_parts.append(attachment)
+        messages.append({"role": "user", "content": user_content_parts})
+    else:
+        messages.append({"role": "user", "content": user_query})
+
+    return messages
+
+
+async def _query_single_mode_response(
+    selected_model: str,
+    *,
+    resolved_prompt: str,
+    conversation_history: List[Dict[str, str]] | None,
+    conversation_session_id: str,
+    openrouter_user: str | None,
+    attachment_parts: List[Dict[str, Any]] | None,
+    request_plugins: List[Dict[str, Any]] | None,
+) -> tuple[Dict[str, Any], bool]:
+    """Run one-model conversation mode and normalize the persisted stage3 payload."""
+    single_mode_messages = _build_single_mode_messages(
+        resolved_prompt,
+        conversation_history=conversation_history,
+        user_attachments=attachment_parts,
+    )
+    single_mode_result = await query_model(
+        selected_model,
+        single_mode_messages,
+        session_id=conversation_session_id,
+        metadata={"stage": "single"},
+        plugins=request_plugins,
+        openrouter_user=openrouter_user,
+    )
+    if single_mode_result is None:
+        return (
+            {
+                "model": selected_model,
+                "response": "Error: Unable to generate response.",
+                "usage": empty_usage_summary(),
+                "workflow_mode": "single",
+            },
+            False,
+        )
+
+    return (
+        {
+            "model": selected_model,
+            "response": single_mode_result.get("content", ""),
+            "usage": single_mode_result.get("usage", empty_usage_summary()),
+            "workflow_mode": "single",
+        },
+        True,
+    )
+
+
 def _resolve_conversation_session_id(conversation: Dict[str, Any]) -> str:
     """
     Resolve a stable session ID for model continuation.
@@ -1216,8 +1311,8 @@ async def send_message(
     user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
-    Send a message and run the 3-stage council process.
-    Returns the complete response with all stages.
+    Send a message using the conversation's configured workflow mode.
+    Returns the complete staged payload contract.
     """
     message_content, incoming_files = await extract_message_content_and_files(
         http_request
@@ -1234,8 +1329,27 @@ async def send_message(
     conversation_session_id = _resolve_conversation_session_id(conversation)
     openrouter_user = _resolve_openrouter_user_identifier(user)
     plan = _get_user_plan(user)
-    council_models = get_council_models_for_plan(plan)
-    chairman_model = get_chairman_model_for_plan(plan)
+    conversation_model_mode = _resolve_conversation_model_mode(conversation)
+    selected_single_model: str | None = None
+    council_models: List[str] | None = None
+    chairman_model: str | None = None
+    if conversation_model_mode == "single":
+        selected_model = _normalize_optional_model_id(conversation.get("selected_model"))
+        if selected_model is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Selected model is required when conversation mode is 'single'.",
+            )
+        app_model = await storage.get_app_model_by_model(selected_model)
+        if app_model is None or not bool(app_model.get("active")):
+            raise HTTPException(
+                status_code=400,
+                detail="Selected model is not available.",
+            )
+        selected_single_model = app_model.get("model") or selected_model
+    else:
+        council_models = get_council_models_for_plan(plan)
+        chairman_model = get_chairman_model_for_plan(plan)
     resolved_timezone = _resolve_user_timezone(user, user_timezone)
     remaining_balance_after = 0
 
@@ -1250,7 +1364,7 @@ async def send_message(
         remaining_queries = await _get_remaining_daily_queries(user, resolved_timezone)
         if remaining_queries <= 0:
             _raise_free_daily_query_limit_error(resolved_timezone)
-        # Keep current balance unless first successful Stage 1 response triggers consumption.
+        # Keep current balance unless first successful generation triggers consumption.
         remaining_balance_after = remaining_queries
 
     attachment_parts, safe_user_files, needs_pdf_parser = (
@@ -1285,55 +1399,58 @@ async def send_message(
         title_usage = title_result.get("usage", empty_usage_summary())
         await storage.update_conversation_title(conversation_id, user["id"], title)
 
-    # Stage 1
-    stage1_results = await stage1_collect_responses(
-        resolved_prompt,
-        conversation_history=conversation_history,
-        session_id=conversation_session_id,
-        openrouter_user=openrouter_user,
-        user_attachments=attachment_parts,
-        plugins=request_plugins,
-        council_models=council_models,
-    )
-
-    # Free plan: consume one query only after Stage 1 has at least one successful response.
-    if defer_first_message_persistence and stage1_results:
-        try:
-            remaining_balance_after = await storage.consume_account_tokens(
-                user["id"],
-                1,
-                FREE_DAILY_QUERY_LIMIT,
-                timezone_name=resolved_timezone,
-            )
-        except ValueError:
-            _raise_free_daily_query_limit_error(resolved_timezone)
-
-    if defer_first_message_persistence:
-        await storage.add_user_message(
-            conversation_id,
-            user["id"],
-            message_content,
-            files=safe_user_files,
-            id_session=conversation_session_id,
-        )
-
-        title_result = await generate_conversation_title(
-            resolved_prompt,
-            session_id=conversation_session_id,
-            openrouter_user=openrouter_user,
-        )
-        title = title_result.get("title", "New Conversation")
-        title_usage = title_result.get("usage", empty_usage_summary())
-        await storage.update_conversation_title(conversation_id, user["id"], title)
-
+    stage1_results: List[Dict[str, Any]] = []
     stage2_results: List[Dict[str, Any]] = []
-    if not stage1_results:
-        stage3_result = {
-            "model": "error",
-            "response": "All models failed to respond. Please try again.",
-            "usage": empty_usage_summary(),
-        }
+    stage3_result: Dict[str, Any]
+
+    if conversation_model_mode == "single":
+        if selected_single_model is None:
+            raise HTTPException(
+                status_code=500,
+                detail="Single model conversation is not configured correctly.",
+            )
+        stage3_result, single_mode_succeeded = await _query_single_mode_response(
+            selected_single_model,
+            resolved_prompt=resolved_prompt,
+            conversation_history=conversation_history,
+            conversation_session_id=conversation_session_id,
+            openrouter_user=openrouter_user,
+            attachment_parts=attachment_parts,
+            request_plugins=request_plugins,
+        )
+
+        # Free plan: consume one query only after a successful single-model response.
+        if defer_first_message_persistence and single_mode_succeeded:
+            try:
+                remaining_balance_after = await storage.consume_account_tokens(
+                    user["id"],
+                    1,
+                    FREE_DAILY_QUERY_LIMIT,
+                    timezone_name=resolved_timezone,
+                )
+            except ValueError:
+                _raise_free_daily_query_limit_error(resolved_timezone)
+
+        if defer_first_message_persistence:
+            await storage.add_user_message(
+                conversation_id,
+                user["id"],
+                message_content,
+                files=safe_user_files,
+                id_session=conversation_session_id,
+            )
+
+            title_result = await generate_conversation_title(
+                resolved_prompt,
+                session_id=conversation_session_id,
+                openrouter_user=openrouter_user,
+            )
+            title = title_result.get("title", "New Conversation")
+            title_usage = title_result.get("usage", empty_usage_summary())
+            await storage.update_conversation_title(conversation_id, user["id"], title)
+
         metadata = {
+            "workflow_mode": "single",
             "label_to_model": {},
             "aggregate_rankings": [],
             "usage": summarize_council_usage(
@@ -1341,38 +1458,95 @@ async def send_message(
             ),
         }
     else:
-        # Stage 2
-        stage2_results, label_to_model = await stage2_collect_rankings(
+        # Stage 1
+        stage1_results = await stage1_collect_responses(
             resolved_prompt,
-            stage1_results,
-            conversation_history=conversation_history,
-            session_id=conversation_session_id,
-            council_models=council_models,
-            openrouter_user=openrouter_user,
-        )
-        aggregate_rankings = calculate_aggregate_rankings(
-            stage2_results, label_to_model
-        )
-
-        # Stage 3
-        stage3_result = await stage3_synthesize_final(
-            resolved_prompt,
-            stage1_results,
-            stage2_results,
             conversation_history=conversation_history,
             session_id=conversation_session_id,
             openrouter_user=openrouter_user,
             user_attachments=attachment_parts,
             plugins=request_plugins,
-            chairman_model=chairman_model,
+            council_models=council_models,
         )
-        metadata = {
-            "label_to_model": label_to_model,
-            "aggregate_rankings": aggregate_rankings,
-            "usage": summarize_council_usage(
-                stage1_results, stage2_results, stage3_result
-            ),
-        }
+
+        # Free plan: consume one query only after Stage 1 has at least one successful response.
+        if defer_first_message_persistence and stage1_results:
+            try:
+                remaining_balance_after = await storage.consume_account_tokens(
+                    user["id"],
+                    1,
+                    FREE_DAILY_QUERY_LIMIT,
+                    timezone_name=resolved_timezone,
+                )
+            except ValueError:
+                _raise_free_daily_query_limit_error(resolved_timezone)
+
+        if defer_first_message_persistence:
+            await storage.add_user_message(
+                conversation_id,
+                user["id"],
+                message_content,
+                files=safe_user_files,
+                id_session=conversation_session_id,
+            )
+
+            title_result = await generate_conversation_title(
+                resolved_prompt,
+                session_id=conversation_session_id,
+                openrouter_user=openrouter_user,
+            )
+            title = title_result.get("title", "New Conversation")
+            title_usage = title_result.get("usage", empty_usage_summary())
+            await storage.update_conversation_title(conversation_id, user["id"], title)
+
+        if not stage1_results:
+            stage3_result = {
+                "model": "error",
+                "response": "All models failed to respond. Please try again.",
+                "usage": empty_usage_summary(),
+            }
+            metadata = {
+                "workflow_mode": "council",
+                "label_to_model": {},
+                "aggregate_rankings": [],
+                "usage": summarize_council_usage(
+                    stage1_results, stage2_results, stage3_result
+                ),
+            }
+        else:
+            # Stage 2
+            stage2_results, label_to_model = await stage2_collect_rankings(
+                resolved_prompt,
+                stage1_results,
+                conversation_history=conversation_history,
+                session_id=conversation_session_id,
+                council_models=council_models,
+                openrouter_user=openrouter_user,
+            )
+            aggregate_rankings = calculate_aggregate_rankings(
+                stage2_results, label_to_model
+            )
+
+            # Stage 3
+            stage3_result = await stage3_synthesize_final(
+                resolved_prompt,
+                stage1_results,
+                stage2_results,
+                conversation_history=conversation_history,
+                session_id=conversation_session_id,
+                openrouter_user=openrouter_user,
+                user_attachments=attachment_parts,
+                plugins=request_plugins,
+                chairman_model=chairman_model,
+            )
+            metadata = {
+                "workflow_mode": "council",
+                "label_to_model": label_to_model,
+                "aggregate_rankings": aggregate_rankings,
+                "usage": summarize_council_usage(
+                    stage1_results, stage2_results, stage3_result
+                ),
+            }
 
     if is_first_message:
         metadata["title_usage"] = title_usage
@@ -1444,8 +1618,8 @@ async def send_message_stream(
     user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
-    Send a message and stream the 3-stage council process.
-    Returns Server-Sent Events as each stage completes.
+    Send a message and stream execution for the configured workflow mode.
+    Returns Server-Sent Events as processing completes.
     """
     message_content, incoming_files = await extract_message_content_and_files(
         http_request
@@ -1462,8 +1636,27 @@ async def send_message_stream(
     conversation_session_id = _resolve_conversation_session_id(conversation)
     openrouter_user = _resolve_openrouter_user_identifier(user)
     plan = _get_user_plan(user)
-    council_models = get_council_models_for_plan(plan)
-    chairman_model = get_chairman_model_for_plan(plan)
+    conversation_model_mode = _resolve_conversation_model_mode(conversation)
+    selected_single_model: str | None = None
+    council_models: List[str] | None = None
+    chairman_model: str | None = None
+    if conversation_model_mode == "single":
+        selected_model = _normalize_optional_model_id(conversation.get("selected_model"))
+        if selected_model is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Selected model is required when conversation mode is 'single'.",
+            )
+        app_model = await storage.get_app_model_by_model(selected_model)
+        if app_model is None or not bool(app_model.get("active")):
+            raise HTTPException(
+                status_code=400,
+                detail="Selected model is not available.",
+            )
+        selected_single_model = app_model.get("model") or selected_model
+    else:
+        council_models = get_council_models_for_plan(plan)
+        chairman_model = get_chairman_model_for_plan(plan)
     resolved_timezone = _resolve_user_timezone(user, user_timezone)
     remaining_balance_after = 0
 
@@ -1478,7 +1671,7 @@ async def send_message_stream(
         remaining_queries = await _get_remaining_daily_queries(user, resolved_timezone)
         if remaining_queries <= 0:
             _raise_free_daily_query_limit_error(resolved_timezone)
-        # Keep current balance unless first successful Stage 1 response triggers consumption.
+        # Keep current balance unless first successful generation triggers consumption.
         remaining_balance_after = remaining_queries
 
     attachment_parts, safe_user_files, needs_pdf_parser = (
@@ -1546,6 +1739,7 @@ async def send_message_stream(
                     "response": "Generation stopped by user.",
                     "usage": empty_usage_summary(),
                     "cancelled": True,
+                    "workflow_mode": conversation_model_mode,
                 }
 
             if stage3_result is None:
@@ -1553,9 +1747,11 @@ async def send_message_stream(
                     "model": "system/error",
                     "response": "No final response available.",
                     "usage": empty_usage_summary(),
+                    "workflow_mode": conversation_model_mode,
                 }
 
             metadata = {
+                "workflow_mode": conversation_model_mode,
                 "label_to_model": label_to_model,
                 "aggregate_rankings": aggregate_rankings,
                 "usage": summarize_council_usage(
@@ -1614,8 +1810,8 @@ async def send_message_stream(
                     remaining_balance_current = await _get_remaining_daily_tokens(user)
             elif plan == "free":
                 if is_first_message:
-                    # Keep current value: pre-check remaining for no-success Stage 1,
-                    # or consumed balance once Stage 1 produced at least one response.
+                    # Keep current value from pre-check, or consumed balance when
+                    # first-turn generation succeeded.
                     remaining_balance_current = max(0, int(remaining_balance_current))
                 else:
                     # Existing conversation continuation stays allowed and does not consume a new free query.
@@ -1664,72 +1860,102 @@ async def send_message_stream(
                     )
                 )
 
-            # Stage 1: Collect responses
-            stage1_started = True
-            yield f"data: {json.dumps({'type': 'stage1_start'})}\n\n"
-            stage1_results = await stage1_collect_responses(
-                resolved_prompt,
-                conversation_history=conversation_history,
-                session_id=conversation_session_id,
-                openrouter_user=openrouter_user,
-                user_attachments=attachment_parts,
-                plugins=request_plugins,
-                council_models=council_models,
-            )
-
-            # Free plan: consume one query only after Stage 1 has at least one successful response.
-            if plan == "free" and is_first_message and stage1_results:
-                try:
-                    remaining_balance_current = await storage.consume_account_tokens(
-                        user["id"],
-                        1,
-                        FREE_DAILY_QUERY_LIMIT,
-                        timezone_name=resolved_timezone,
+            if conversation_model_mode == "single":
+                if selected_single_model is None:
+                    raise HTTPException(
+                        status_code=500,
+                        detail="Single model conversation is not configured correctly.",
                     )
-                except ValueError:
-                    _raise_free_daily_query_limit_error(resolved_timezone)
+                stage3_started = True
+                yield f"data: {json.dumps({'type': 'stage3_start'})}\n\n"
+                stage3_result, single_mode_succeeded = await _query_single_mode_response(
+                    selected_single_model,
+                    resolved_prompt=resolved_prompt,
+                    conversation_history=conversation_history,
+                    conversation_session_id=conversation_session_id,
+                    openrouter_user=openrouter_user,
+                    attachment_parts=attachment_parts,
+                    request_plugins=request_plugins,
+                )
 
-            if await http_request.is_disconnected():
-                await persist_turn(cancelled=True, wait_for_title=False)
-                return
+                # Free plan: consume one query only after successful first turn generation.
+                if plan == "free" and is_first_message and single_mode_succeeded:
+                    try:
+                        remaining_balance_current = await storage.consume_account_tokens(
+                            user["id"],
+                            1,
+                            FREE_DAILY_QUERY_LIMIT,
+                            timezone_name=resolved_timezone,
+                        )
+                    except ValueError:
+                        _raise_free_daily_query_limit_error(resolved_timezone)
+            else:
+                # Stage 1: Collect responses
+                stage1_started = True
+                yield f"data: {json.dumps({'type': 'stage1_start'})}\n\n"
+                stage1_results = await stage1_collect_responses(
+                    resolved_prompt,
+                    conversation_history=conversation_history,
+                    session_id=conversation_session_id,
+                    openrouter_user=openrouter_user,
+                    user_attachments=attachment_parts,
+                    plugins=request_plugins,
+                    council_models=council_models,
+                )
 
-            yield f"data: {json.dumps({'type': 'stage1_complete', 'data': stage1_results})}\n\n"
+                # Free plan: consume one query only after Stage 1 has at least one successful response.
+                if plan == "free" and is_first_message and stage1_results:
+                    try:
+                        remaining_balance_current = await storage.consume_account_tokens(
+                            user["id"],
+                            1,
+                            FREE_DAILY_QUERY_LIMIT,
+                            timezone_name=resolved_timezone,
+                        )
+                    except ValueError:
+                        _raise_free_daily_query_limit_error(resolved_timezone)
 
-            # Stage 2: Collect rankings
-            stage2_started = True
-            yield f"data: {json.dumps({'type': 'stage2_start'})}\n\n"
-            stage2_results, label_to_model = await stage2_collect_rankings(
-                resolved_prompt,
-                stage1_results,
-                conversation_history=conversation_history,
-                session_id=conversation_session_id,
-                council_models=council_models,
-                openrouter_user=openrouter_user,
-            )
-            aggregate_rankings = calculate_aggregate_rankings(
-                stage2_results, label_to_model
-            )
+                if await http_request.is_disconnected():
+                    await persist_turn(cancelled=True, wait_for_title=False)
+                    return
 
-            if await http_request.is_disconnected():
-                await persist_turn(cancelled=True, wait_for_title=False)
-                return
+                yield f"data: {json.dumps({'type': 'stage1_complete', 'data': stage1_results})}\n\n"
 
-            yield f"data: {json.dumps({'type': 'stage2_complete', 'data': stage2_results, 'metadata': {'label_to_model': label_to_model, 'aggregate_rankings': aggregate_rankings}})}\n\n"
+                # Stage 2: Collect rankings
+                stage2_started = True
+                yield f"data: {json.dumps({'type': 'stage2_start'})}\n\n"
+                stage2_results, label_to_model = await stage2_collect_rankings(
+                    resolved_prompt,
+                    stage1_results,
+                    conversation_history=conversation_history,
+                    session_id=conversation_session_id,
+                    council_models=council_models,
+                    openrouter_user=openrouter_user,
+                )
+                aggregate_rankings = calculate_aggregate_rankings(
+                    stage2_results, label_to_model
+                )
 
-            # Stage 3: Synthesize final answer
-            stage3_started = True
-            yield f"data: {json.dumps({'type': 'stage3_start'})}\n\n"
-            stage3_result = await stage3_synthesize_final(
-                resolved_prompt,
-                stage1_results,
-                stage2_results,
-                conversation_history=conversation_history,
-                session_id=conversation_session_id,
-                openrouter_user=openrouter_user,
-                user_attachments=attachment_parts,
-                plugins=request_plugins,
-                chairman_model=chairman_model,
-            )
+                if await http_request.is_disconnected():
+                    await persist_turn(cancelled=True, wait_for_title=False)
+                    return
+
+                yield f"data: {json.dumps({'type': 'stage2_complete', 'data': stage2_results, 'metadata': {'label_to_model': label_to_model, 'aggregate_rankings': aggregate_rankings}})}\n\n"
+
+                # Stage 3: Synthesize final answer
+                stage3_started = True
+                yield f"data: {json.dumps({'type': 'stage3_start'})}\n\n"
+                stage3_result = await stage3_synthesize_final(
+                    resolved_prompt,
+                    stage1_results,
+                    stage2_results,
+                    conversation_history=conversation_history,
+                    session_id=conversation_session_id,
+                    openrouter_user=openrouter_user,
+                    user_attachments=attachment_parts,
+                    plugins=request_plugins,
+                    chairman_model=chairman_model,
+                )
 
             if await http_request.is_disconnected():
                 await persist_turn(cancelled=True, wait_for_title=False)

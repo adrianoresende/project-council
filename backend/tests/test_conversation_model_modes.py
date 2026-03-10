@@ -1,8 +1,10 @@
 """Storage tests for conversation model mode defaults and persistence."""
 
 import unittest
-from unittest.mock import AsyncMock, patch
+from fastapi import HTTPException
+from unittest.mock import AsyncMock, Mock, patch
 
+from backend import main
 from backend.services.supabase import storage
 
 
@@ -263,3 +265,352 @@ class ConversationModelSelectionStorageTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn("not found", str(raised.exception))
         rest_request_mock.assert_not_awaited()
+
+
+class ConversationModelModeExecutionTests(unittest.IsolatedAsyncioTestCase):
+    @staticmethod
+    def _free_user():
+        return {
+            "id": "user-free-1",
+            "email": "free@example.com",
+            "user_metadata": {"plan": "free"},
+            "app_metadata": {},
+        }
+
+    @staticmethod
+    def _request_stub():
+        class RequestStub:
+            async def is_disconnected(self):
+                return False
+
+        return RequestStub()
+
+    async def test_send_message_single_mode_skips_council_stages(self):
+        stage1_mock = AsyncMock()
+        stage2_mock = AsyncMock()
+        stage3_mock = AsyncMock()
+        single_query_mock = AsyncMock(
+            return_value={
+                "content": "Single answer",
+                "usage": main.empty_usage_summary(),
+            }
+        )
+        add_assistant_mock = AsyncMock()
+        resolve_council_models_mock = Mock(
+            return_value=["openai/gpt-oss-120b", "google/gemini-2.0-flash"]
+        )
+        resolve_chairman_model_mock = Mock(return_value="openai/gpt-5-nano")
+
+        with (
+            patch(
+                "backend.main.extract_message_content_and_files",
+                new=AsyncMock(return_value=("Continue", [])),
+            ),
+            patch(
+                "backend.main.get_owned_conversation",
+                new=AsyncMock(
+                    return_value={
+                        "id": "conv-1",
+                        "model_mode": "single",
+                        "selected_model": "openai/gpt-5.1",
+                        "messages": [{"role": "user", "content": "Earlier message"}],
+                    }
+                ),
+            ),
+            patch(
+                "backend.main.storage.get_app_model_by_model",
+                new=AsyncMock(
+                    return_value={
+                        "model": "openai/gpt-5.1",
+                        "title": "GPT-5.1",
+                        "active": True,
+                    }
+                ),
+            ),
+            patch("backend.main._get_remaining_daily_queries", new=AsyncMock(return_value=2)),
+            patch(
+                "backend.main.prepare_uploaded_files_for_model",
+                new=AsyncMock(return_value=([], [], False)),
+            ),
+            patch("backend.main.resolve_message_prompt", return_value="Continue"),
+            patch("backend.main.storage.add_user_message", new=AsyncMock()),
+            patch("backend.main.query_model", new=single_query_mock),
+            patch("backend.main.stage1_collect_responses", new=stage1_mock),
+            patch("backend.main.stage2_collect_rankings", new=stage2_mock),
+            patch("backend.main.stage3_synthesize_final", new=stage3_mock),
+            patch("backend.main.storage.add_assistant_message", new=add_assistant_mock),
+            patch("backend.main.storage.get_conversation", new=AsyncMock(return_value={})),
+            patch(
+                "backend.main.get_council_models_for_plan",
+                new=resolve_council_models_mock,
+            ),
+            patch(
+                "backend.main.get_chairman_model_for_plan",
+                new=resolve_chairman_model_mock,
+            ),
+        ):
+            response = await main.send_message(
+                conversation_id="conv-1",
+                http_request=object(),
+                user_timezone="America/New_York",
+                user=self._free_user(),
+            )
+
+        stage1_mock.assert_not_awaited()
+        stage2_mock.assert_not_awaited()
+        stage3_mock.assert_not_awaited()
+        resolve_council_models_mock.assert_not_called()
+        resolve_chairman_model_mock.assert_not_called()
+        single_query_mock.assert_awaited_once()
+        self.assertEqual(response["stage1"], [])
+        self.assertEqual(response["stage2"], [])
+        self.assertEqual(response["stage3"].get("workflow_mode"), "single")
+        self.assertEqual(response["metadata"].get("workflow_mode"), "single")
+        assistant_args = add_assistant_mock.await_args.args
+        self.assertEqual(assistant_args[2], [])
+        self.assertEqual(assistant_args[3], [])
+        self.assertEqual(assistant_args[4].get("workflow_mode"), "single")
+
+    async def test_send_message_council_mode_uses_three_stage_pipeline(self):
+        stage1_mock = AsyncMock(
+            return_value=[
+                {
+                    "model": "openai/gpt-oss-120b",
+                    "response": "Stage 1",
+                    "usage": main.empty_usage_summary(),
+                }
+            ]
+        )
+        stage2_mock = AsyncMock(return_value=([], {}))
+        stage3_mock = AsyncMock(
+            return_value={
+                "model": "openai/gpt-5-nano",
+                "response": "Stage 3",
+                "usage": main.empty_usage_summary(),
+            }
+        )
+        single_query_mock = AsyncMock()
+        resolve_council_models_mock = Mock(
+            return_value=["openai/gpt-oss-120b", "google/gemini-2.0-flash"]
+        )
+        resolve_chairman_model_mock = Mock(return_value="openai/gpt-5-nano")
+
+        with (
+            patch(
+                "backend.main.extract_message_content_and_files",
+                new=AsyncMock(return_value=("Continue", [])),
+            ),
+            patch(
+                "backend.main.get_owned_conversation",
+                new=AsyncMock(
+                    return_value={
+                        "id": "conv-1",
+                        "model_mode": "council",
+                        "messages": [{"role": "user", "content": "Earlier message"}],
+                    }
+                ),
+            ),
+            patch("backend.main._get_remaining_daily_queries", new=AsyncMock(return_value=2)),
+            patch(
+                "backend.main.prepare_uploaded_files_for_model",
+                new=AsyncMock(return_value=([], [], False)),
+            ),
+            patch("backend.main.resolve_message_prompt", return_value="Continue"),
+            patch("backend.main.storage.add_user_message", new=AsyncMock()),
+            patch("backend.main.query_model", new=single_query_mock),
+            patch("backend.main.stage1_collect_responses", new=stage1_mock),
+            patch("backend.main.stage2_collect_rankings", new=stage2_mock),
+            patch("backend.main.stage3_synthesize_final", new=stage3_mock),
+            patch("backend.main.storage.add_assistant_message", new=AsyncMock()),
+            patch("backend.main.storage.get_conversation", new=AsyncMock(return_value={})),
+            patch(
+                "backend.main.get_council_models_for_plan",
+                new=resolve_council_models_mock,
+            ),
+            patch(
+                "backend.main.get_chairman_model_for_plan",
+                new=resolve_chairman_model_mock,
+            ),
+        ):
+            response = await main.send_message(
+                conversation_id="conv-1",
+                http_request=object(),
+                user_timezone="America/New_York",
+                user=self._free_user(),
+            )
+
+        resolve_council_models_mock.assert_called_once_with("free")
+        resolve_chairman_model_mock.assert_called_once_with("free")
+        stage1_mock.assert_awaited_once()
+        stage2_mock.assert_awaited_once()
+        stage3_mock.assert_awaited_once()
+        single_query_mock.assert_not_awaited()
+        self.assertEqual(response["metadata"].get("workflow_mode"), "council")
+
+    async def test_send_message_single_mode_requires_selected_model(self):
+        with (
+            patch(
+                "backend.main.extract_message_content_and_files",
+                new=AsyncMock(return_value=("Hello", [])),
+            ),
+            patch(
+                "backend.main.get_owned_conversation",
+                new=AsyncMock(
+                    return_value={
+                        "id": "conv-1",
+                        "model_mode": "single",
+                        "selected_model": "   ",
+                        "messages": [],
+                    }
+                ),
+            ),
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                await main.send_message(
+                    conversation_id="conv-1",
+                    http_request=object(),
+                    user=self._free_user(),
+                )
+
+        self.assertEqual(raised.exception.status_code, 400)
+        self.assertIn("Selected model is required", str(raised.exception.detail))
+
+    async def test_send_message_single_mode_rejects_inactive_model(self):
+        with (
+            patch(
+                "backend.main.extract_message_content_and_files",
+                new=AsyncMock(return_value=("Hello", [])),
+            ),
+            patch(
+                "backend.main.get_owned_conversation",
+                new=AsyncMock(
+                    return_value={
+                        "id": "conv-1",
+                        "model_mode": "single",
+                        "selected_model": "openai/gpt-5.1",
+                        "messages": [],
+                    }
+                ),
+            ),
+            patch(
+                "backend.main.storage.get_app_model_by_model",
+                new=AsyncMock(
+                    return_value={
+                        "model": "openai/gpt-5.1",
+                        "active": False,
+                    }
+                ),
+            ),
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                await main.send_message(
+                    conversation_id="conv-1",
+                    http_request=object(),
+                    user=self._free_user(),
+                )
+
+        self.assertEqual(raised.exception.status_code, 400)
+        self.assertIn("not available", str(raised.exception.detail))
+
+    async def test_send_message_stream_single_mode_emits_stage3_only(self):
+        stage1_mock = AsyncMock()
+        stage2_mock = AsyncMock()
+        stage3_mock = AsyncMock()
+        single_query_mock = AsyncMock(
+            return_value={
+                "content": "Single answer",
+                "usage": main.empty_usage_summary(),
+            }
+        )
+        chunks: list[str] = []
+
+        with (
+            patch(
+                "backend.main.extract_message_content_and_files",
+                new=AsyncMock(return_value=("Continue", [])),
+            ),
+            patch(
+                "backend.main.get_owned_conversation",
+                new=AsyncMock(
+                    return_value={
+                        "id": "conv-1",
+                        "model_mode": "single",
+                        "selected_model": "openai/gpt-5.1",
+                        "messages": [{"role": "user", "content": "Earlier message"}],
+                    }
+                ),
+            ),
+            patch(
+                "backend.main.storage.get_app_model_by_model",
+                new=AsyncMock(
+                    return_value={
+                        "model": "openai/gpt-5.1",
+                        "title": "GPT-5.1",
+                        "active": True,
+                    }
+                ),
+            ),
+            patch("backend.main._get_remaining_daily_queries", new=AsyncMock(return_value=2)),
+            patch(
+                "backend.main.prepare_uploaded_files_for_model",
+                new=AsyncMock(return_value=([], [], False)),
+            ),
+            patch("backend.main.resolve_message_prompt", return_value="Continue"),
+            patch("backend.main.storage.add_user_message", new=AsyncMock()),
+            patch("backend.main.query_model", new=single_query_mock),
+            patch("backend.main.stage1_collect_responses", new=stage1_mock),
+            patch("backend.main.stage2_collect_rankings", new=stage2_mock),
+            patch("backend.main.stage3_synthesize_final", new=stage3_mock),
+            patch("backend.main.storage.add_assistant_message", new=AsyncMock()),
+            patch("backend.main.storage.get_conversation", new=AsyncMock(return_value={})),
+        ):
+            response = await main.send_message_stream(
+                conversation_id="conv-1",
+                http_request=self._request_stub(),
+                user_timezone="America/New_York",
+                user=self._free_user(),
+            )
+            async for chunk in response.body_iterator:
+                chunks.append(chunk)
+
+        combined = "".join(chunks)
+        self.assertIn('"type": "stage3_start"', combined)
+        self.assertIn('"type": "stage3_complete"', combined)
+        self.assertNotIn('"type": "stage1_start"', combined)
+        self.assertNotIn('"type": "stage2_start"', combined)
+        stage1_mock.assert_not_awaited()
+        stage2_mock.assert_not_awaited()
+        stage3_mock.assert_not_awaited()
+        single_query_mock.assert_awaited_once()
+
+    async def test_send_message_stream_single_mode_rejects_inactive_model(self):
+        with (
+            patch(
+                "backend.main.extract_message_content_and_files",
+                new=AsyncMock(return_value=("Hello", [])),
+            ),
+            patch(
+                "backend.main.get_owned_conversation",
+                new=AsyncMock(
+                    return_value={
+                        "id": "conv-1",
+                        "model_mode": "single",
+                        "selected_model": "openai/gpt-5.1",
+                        "messages": [],
+                    }
+                ),
+            ),
+            patch(
+                "backend.main.storage.get_app_model_by_model",
+                new=AsyncMock(return_value=None),
+            ),
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                await main.send_message_stream(
+                    conversation_id="conv-1",
+                    http_request=self._request_stub(),
+                    user=self._free_user(),
+                )
+
+        self.assertEqual(raised.exception.status_code, 400)
+        self.assertIn("not available", str(raised.exception.detail))

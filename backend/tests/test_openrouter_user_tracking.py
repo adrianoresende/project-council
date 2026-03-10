@@ -337,6 +337,140 @@ class OpenRouterEndpointPropagationTests(unittest.IsolatedAsyncioTestCase):
             expected_user,
         )
 
+    async def test_send_message_single_mode_propagates_openrouter_user(self):
+        expected_user = "singlemode@example.com"
+        single_query_mock = AsyncMock(
+            return_value={
+                "content": "Single",
+                "usage": main.empty_usage_summary(),
+            }
+        )
+        stage1_mock = AsyncMock()
+        stage2_mock = AsyncMock()
+        stage3_mock = AsyncMock()
+
+        with (
+            patch(
+                "backend.main.extract_message_content_and_files",
+                new=AsyncMock(return_value=("Hello", [])),
+            ),
+            patch(
+                "backend.main.get_owned_conversation",
+                new=AsyncMock(
+                    return_value={
+                        "id": "conv-1",
+                        "model_mode": "single",
+                        "selected_model": "openai/gpt-5.1",
+                        "messages": [{"role": "user", "content": "Earlier"}],
+                    }
+                ),
+            ),
+            patch(
+                "backend.main.storage.get_app_model_by_model",
+                new=AsyncMock(
+                    return_value={
+                        "model": "openai/gpt-5.1",
+                        "active": True,
+                    }
+                ),
+            ),
+            patch("backend.main._get_remaining_daily_queries", new=AsyncMock(return_value=3)),
+            patch(
+                "backend.main.prepare_uploaded_files_for_model",
+                new=AsyncMock(return_value=([], [], False)),
+            ),
+            patch("backend.main.resolve_message_prompt", return_value="Hello"),
+            patch("backend.main.storage.add_user_message", new=AsyncMock()),
+            patch("backend.main.query_model", new=single_query_mock),
+            patch("backend.main.stage1_collect_responses", new=stage1_mock),
+            patch("backend.main.stage2_collect_rankings", new=stage2_mock),
+            patch("backend.main.stage3_synthesize_final", new=stage3_mock),
+            patch("backend.main.storage.add_assistant_message", new=AsyncMock()),
+            patch("backend.main.storage.get_conversation", new=AsyncMock(return_value={})),
+        ):
+            await main.send_message(
+                conversation_id="conv-1",
+                http_request=object(),
+                user_timezone="America/New_York",
+                user=self._free_user("  SingleMode@Example.com  "),
+            )
+
+        self.assertEqual(
+            single_query_mock.await_args.kwargs.get("openrouter_user"),
+            expected_user,
+        )
+        stage1_mock.assert_not_awaited()
+        stage2_mock.assert_not_awaited()
+        stage3_mock.assert_not_awaited()
+
+    async def test_send_message_stream_single_mode_propagates_openrouter_user(self):
+        expected_user = "single-stream@example.com"
+        single_query_mock = AsyncMock(
+            return_value={
+                "content": "Single",
+                "usage": main.empty_usage_summary(),
+            }
+        )
+        stage1_mock = AsyncMock()
+        stage2_mock = AsyncMock()
+        stage3_mock = AsyncMock()
+
+        with (
+            patch(
+                "backend.main.extract_message_content_and_files",
+                new=AsyncMock(return_value=("Hello", [])),
+            ),
+            patch(
+                "backend.main.get_owned_conversation",
+                new=AsyncMock(
+                    return_value={
+                        "id": "conv-1",
+                        "model_mode": "single",
+                        "selected_model": "openai/gpt-5.1",
+                        "messages": [{"role": "user", "content": "Earlier"}],
+                    }
+                ),
+            ),
+            patch(
+                "backend.main.storage.get_app_model_by_model",
+                new=AsyncMock(
+                    return_value={
+                        "model": "openai/gpt-5.1",
+                        "active": True,
+                    }
+                ),
+            ),
+            patch("backend.main._get_remaining_daily_queries", new=AsyncMock(return_value=3)),
+            patch(
+                "backend.main.prepare_uploaded_files_for_model",
+                new=AsyncMock(return_value=([], [], False)),
+            ),
+            patch("backend.main.resolve_message_prompt", return_value="Hello"),
+            patch("backend.main.storage.add_user_message", new=AsyncMock()),
+            patch("backend.main.query_model", new=single_query_mock),
+            patch("backend.main.stage1_collect_responses", new=stage1_mock),
+            patch("backend.main.stage2_collect_rankings", new=stage2_mock),
+            patch("backend.main.stage3_synthesize_final", new=stage3_mock),
+            patch("backend.main.storage.add_assistant_message", new=AsyncMock()),
+            patch("backend.main.storage.get_conversation", new=AsyncMock(return_value={})),
+        ):
+            response = await main.send_message_stream(
+                conversation_id="conv-1",
+                http_request=_RequestStub(),
+                user_timezone="America/New_York",
+                user=self._free_user("  Single-Stream@Example.com  "),
+            )
+            async for _ in response.body_iterator:
+                pass
+
+        self.assertEqual(
+            single_query_mock.await_args.kwargs.get("openrouter_user"),
+            expected_user,
+        )
+        stage1_mock.assert_not_awaited()
+        stage2_mock.assert_not_awaited()
+        stage3_mock.assert_not_awaited()
+
     async def test_send_message_enables_web_search_for_free_plan(self):
         stage1_mock = AsyncMock(
             return_value=[
