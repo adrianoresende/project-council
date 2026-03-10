@@ -55,7 +55,8 @@ Save to `{@artifacts_path}/plan.md`. If the feature is trivial and doesn't warra
 
 ---
 
-### [ ] Step: Backend Data Model and Storage Foundation
+### [x] Step: Backend Data Model and Storage Foundation
+<!-- chat-id: e5829b6e-c8ad-4297-bcc8-af6f1ef40363 -->
 
 - Update `backend/supabase_schema.sql` to add `app_models` table and conversation model selection columns.
 - Extend `backend/services/supabase/storage.py` to support:

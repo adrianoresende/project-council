@@ -221,6 +221,76 @@ def _build_stage_metadata(stage1: Any, stage2: Any, usage: Dict[str, Any]) -> Di
     return metadata
 
 
+def _normalize_optional_short_text(
+    value: Any,
+    *,
+    max_length: int,
+) -> str | None:
+    """Normalize optional short text fields for stable DB payloads."""
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    if not normalized:
+        return None
+    return normalized[:max_length]
+
+
+def _normalize_conversation_model_selection(
+    model_mode: Any,
+    selected_model: Any = None,
+    selected_model_title: Any = None,
+) -> Dict[str, Any]:
+    """
+    Normalize per-conversation model selection fields.
+
+    Defaults to council mode when the value is missing or invalid.
+    """
+    normalized_mode = "council"
+    if isinstance(model_mode, str) and model_mode.strip().lower() == "single":
+        normalized_mode = "single"
+
+    normalized_model = _normalize_optional_short_text(selected_model, max_length=255)
+    normalized_model_title = _normalize_optional_short_text(
+        selected_model_title, max_length=255
+    )
+
+    if normalized_mode != "single":
+        normalized_model = None
+        normalized_model_title = None
+    elif normalized_model is None:
+        normalized_model_title = None
+
+    return {
+        "model_mode": normalized_mode,
+        "selected_model": normalized_model,
+        "selected_model_title": normalized_model_title,
+    }
+
+
+def _build_app_model_row(row: Any) -> Dict[str, Any]:
+    """Normalize managed app model rows into a stable contract."""
+    if not isinstance(row, dict):
+        raise RuntimeError("Unexpected app model row returned by database.")
+
+    created_at = row.get("created_at")
+    if not isinstance(created_at, str):
+        created_at = ""
+
+    updated_at = row.get("updated_at")
+    if not isinstance(updated_at, str):
+        updated_at = ""
+
+    return {
+        "id": _to_int(row.get("id")),
+        "title": _normalize_optional_short_text(row.get("title"), max_length=255) or "",
+        "model": _normalize_optional_short_text(row.get("model"), max_length=255) or "",
+        "category": _normalize_optional_short_text(row.get("category"), max_length=120) or "",
+        "active": bool(row.get("active", False)),
+        "created_at": created_at.strip(),
+        "updated_at": updated_at.strip(),
+    }
+
+
 def _ensure_supabase_db_config() -> tuple[str, str]:
     """Compatibility wrapper for shared Supabase DB config validation."""
     return ensure_supabase_db_config()
@@ -257,7 +327,10 @@ async def _get_conversation_row(
         "GET",
         "conversations",
         params={
-            "select": "id,created_at,title,user_id,archived",
+            "select": (
+                "id,created_at,title,user_id,archived,"
+                "model_mode,selected_model,selected_model_title"
+            ),
             "id": f"eq.{conversation_id}",
             "user_id": f"eq.{user_id}",
             "limit": "1",
@@ -268,8 +341,20 @@ async def _get_conversation_row(
     return rows[0]
 
 
-async def create_conversation(conversation_id: str, user_id: str) -> Dict[str, Any]:
+async def create_conversation(
+    conversation_id: str,
+    user_id: str,
+    *,
+    model_mode: str = "council",
+    selected_model: str | None = None,
+    selected_model_title: str | None = None,
+) -> Dict[str, Any]:
     """Create a new conversation owned by user_id."""
+    normalized_selection = _normalize_conversation_model_selection(
+        model_mode,
+        selected_model,
+        selected_model_title,
+    )
     rows = await _rest_request(
         "POST",
         "conversations",
@@ -278,15 +363,26 @@ async def create_conversation(conversation_id: str, user_id: str) -> Dict[str, A
             "user_id": user_id,
             "title": "New Conversation",
             "archived": False,
+            "model_mode": normalized_selection["model_mode"],
+            "selected_model": normalized_selection["selected_model"],
+            "selected_model_title": normalized_selection["selected_model_title"],
         },
         prefer="return=representation",
     )
     row = rows[0]
+    stored_selection = _normalize_conversation_model_selection(
+        row.get("model_mode"),
+        row.get("selected_model"),
+        row.get("selected_model_title"),
+    )
     return {
         "id": row["id"],
         "created_at": row["created_at"],
         "title": row.get("title") or "New Conversation",
         "archived": bool(row.get("archived", False)),
+        "model_mode": stored_selection["model_mode"],
+        "selected_model": stored_selection["selected_model"],
+        "selected_model_title": stored_selection["selected_model_title"],
         "messages": [],
         "usage": _empty_usage_summary(),
     }
@@ -348,12 +444,20 @@ async def get_conversation(conversation_id: str, user_id: str) -> Optional[Dict[
         )
 
     conversation_usage["total_cost"] = round(conversation_usage["total_cost"], 8)
+    model_selection = _normalize_conversation_model_selection(
+        conversation_row.get("model_mode"),
+        conversation_row.get("selected_model"),
+        conversation_row.get("selected_model_title"),
+    )
 
     return {
         "id": conversation_row["id"],
         "created_at": conversation_row["created_at"],
         "title": conversation_row.get("title") or "New Conversation",
         "archived": bool(conversation_row.get("archived", False)),
+        "model_mode": model_selection["model_mode"],
+        "selected_model": model_selection["selected_model"],
+        "selected_model_title": model_selection["selected_model_title"],
         "messages": messages,
         "usage": conversation_usage,
     }
@@ -365,7 +469,10 @@ async def list_conversations(user_id: str, archived: bool = False) -> List[Dict[
         "GET",
         "conversations",
         params={
-            "select": "id,created_at,title,archived",
+            "select": (
+                "id,created_at,title,archived,"
+                "model_mode,selected_model,selected_model_title"
+            ),
             "user_id": f"eq.{user_id}",
             "archived": f"eq.{str(archived).lower()}",
             "order": "created_at.desc",
@@ -414,12 +521,20 @@ async def list_conversations(user_id: str, archived: bool = False) -> List[Dict[
         # Hide drafts (no messages yet) from sidebar list until first question.
         if message_count <= 0:
             continue
+        model_selection = _normalize_conversation_model_selection(
+            row.get("model_mode"),
+            row.get("selected_model"),
+            row.get("selected_model_title"),
+        )
         conversations.append(
             {
                 "id": row["id"],
                 "created_at": row["created_at"],
                 "title": row.get("title") or "New Conversation",
                 "archived": bool(row.get("archived", False)),
+                "model_mode": model_selection["model_mode"],
+                "selected_model": model_selection["selected_model"],
+                "selected_model_title": model_selection["selected_model_title"],
                 "message_count": message_count,
                 "usage": usage_totals.get(row["id"], _empty_usage_summary()),
             }
@@ -531,6 +646,44 @@ async def update_conversation_archived(
         json_body={"archived": archived},
         prefer="return=minimal",
     )
+
+
+async def update_conversation_model_selection(
+    conversation_id: str,
+    user_id: str,
+    *,
+    model_mode: str,
+    selected_model: str | None = None,
+    selected_model_title: str | None = None,
+) -> Dict[str, Any]:
+    """Update model mode/selection for a user-owned conversation."""
+    conversation_row = await _get_conversation_row(conversation_id, user_id)
+    if conversation_row is None:
+        raise ValueError(f"Conversation {conversation_id} not found")
+
+    normalized_selection = _normalize_conversation_model_selection(
+        model_mode,
+        selected_model,
+        selected_model_title,
+    )
+
+    await _rest_request(
+        "PATCH",
+        "conversations",
+        params={
+            "id": f"eq.{conversation_id}",
+            "user_id": f"eq.{user_id}",
+        },
+        json_body=normalized_selection,
+        prefer="return=minimal",
+    )
+
+    return {
+        "id": conversation_id,
+        "model_mode": normalized_selection["model_mode"],
+        "selected_model": normalized_selection["selected_model"],
+        "selected_model_title": normalized_selection["selected_model_title"],
+    }
 
 
 async def _ensure_credit_account(user_id: str, initial_credits: int = 0):
@@ -752,6 +905,161 @@ async def list_billing_payments(user_id: str, limit: int = 50) -> List[Dict[str,
     if not isinstance(rows, list):
         return []
     return rows
+
+
+async def list_app_models(active_only: bool | None = None) -> List[Dict[str, Any]]:
+    """List managed app models, optionally filtering by active state."""
+    params: Dict[str, str] = {
+        "select": "id,title,model,category,active,created_at,updated_at",
+        "order": "active.desc,category.asc,title.asc,id.asc",
+    }
+    if active_only is True:
+        params["active"] = "eq.true"
+    elif active_only is False:
+        params["active"] = "eq.false"
+
+    rows = await _rest_request("GET", "app_models", params=params)
+    if not isinstance(rows, list):
+        return []
+    return [_build_app_model_row(row) for row in rows]
+
+
+async def list_active_app_models() -> List[Dict[str, Any]]:
+    """List only active managed app models for end-user selection."""
+    return await list_app_models(active_only=True)
+
+
+async def get_app_model_by_id(app_model_id: int) -> Optional[Dict[str, Any]]:
+    """Get one managed app model by numeric id."""
+    rows = await _rest_request(
+        "GET",
+        "app_models",
+        params={
+            "select": "id,title,model,category,active,created_at,updated_at",
+            "id": f"eq.{max(1, int(app_model_id))}",
+            "limit": "1",
+        },
+    )
+    if not isinstance(rows, list) or not rows:
+        return None
+    return _build_app_model_row(rows[0])
+
+
+async def get_app_model_by_model(model: str) -> Optional[Dict[str, Any]]:
+    """Get one managed app model by OpenRouter model identifier."""
+    normalized_model = _normalize_optional_short_text(model, max_length=255)
+    if normalized_model is None:
+        return None
+
+    rows = await _rest_request(
+        "GET",
+        "app_models",
+        params={
+            "select": "id,title,model,category,active,created_at,updated_at",
+            "model": f"eq.{normalized_model}",
+            "limit": "1",
+        },
+    )
+    if not isinstance(rows, list) or not rows:
+        return None
+    return _build_app_model_row(rows[0])
+
+
+async def create_app_model(
+    title: str,
+    model: str,
+    category: str,
+    *,
+    active: bool = True,
+) -> Dict[str, Any]:
+    """Create a managed app model row."""
+    normalized_title = _normalize_optional_short_text(title, max_length=255)
+    if normalized_title is None:
+        raise ValueError("Model title is required.")
+
+    normalized_model = _normalize_optional_short_text(model, max_length=255)
+    if normalized_model is None:
+        raise ValueError("Model id is required.")
+
+    normalized_category = _normalize_optional_short_text(category, max_length=120)
+    if normalized_category is None:
+        raise ValueError("Model category is required.")
+
+    now_iso = _now_utc().isoformat()
+    rows = await _rest_request(
+        "POST",
+        "app_models",
+        json_body={
+            "title": normalized_title,
+            "model": normalized_model,
+            "category": normalized_category,
+            "active": bool(active),
+            "updated_at": now_iso,
+        },
+        prefer="return=representation",
+    )
+    if not isinstance(rows, list) or not rows:
+        raise RuntimeError("Managed model was not created.")
+    return _build_app_model_row(rows[0])
+
+
+async def update_app_model(
+    app_model_id: int,
+    *,
+    title: str | None = None,
+    model: str | None = None,
+    category: str | None = None,
+    active: bool | None = None,
+) -> Optional[Dict[str, Any]]:
+    """Update editable fields for one managed app model."""
+    payload: Dict[str, Any] = {}
+
+    if title is not None:
+        normalized_title = _normalize_optional_short_text(title, max_length=255)
+        if normalized_title is None:
+            raise ValueError("Model title is required.")
+        payload["title"] = normalized_title
+
+    if model is not None:
+        normalized_model = _normalize_optional_short_text(model, max_length=255)
+        if normalized_model is None:
+            raise ValueError("Model id is required.")
+        payload["model"] = normalized_model
+
+    if category is not None:
+        normalized_category = _normalize_optional_short_text(category, max_length=120)
+        if normalized_category is None:
+            raise ValueError("Model category is required.")
+        payload["category"] = normalized_category
+
+    if active is not None:
+        payload["active"] = bool(active)
+
+    if not payload:
+        raise ValueError("At least one field is required to update model.")
+
+    payload["updated_at"] = _now_utc().isoformat()
+    rows = await _rest_request(
+        "PATCH",
+        "app_models",
+        params={"id": f"eq.{max(1, int(app_model_id))}"},
+        json_body=payload,
+        prefer="return=representation",
+    )
+    if not isinstance(rows, list) or not rows:
+        return None
+    return _build_app_model_row(rows[0])
+
+
+async def delete_app_model(app_model_id: int) -> bool:
+    """Delete one managed app model by numeric id."""
+    rows = await _rest_request(
+        "DELETE",
+        "app_models",
+        params={"id": f"eq.{max(1, int(app_model_id))}"},
+        prefer="return=representation",
+    )
+    return isinstance(rows, list) and len(rows) > 0
 
 
 def _build_feedback_row(row: Any) -> Dict[str, Any]:

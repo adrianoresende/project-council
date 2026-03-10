@@ -5,11 +5,24 @@ create table if not exists public.conversations (
   user_id uuid not null references auth.users (id) on delete cascade,
   title text not null default 'New Conversation',
   archived boolean not null default false,
+  model_mode text not null default 'council' check (model_mode in ('council', 'single')),
+  selected_model text,
+  selected_model_title text,
   created_at timestamptz not null default now()
 );
 
 alter table public.conversations
   add column if not exists archived boolean not null default false;
+
+alter table public.conversations
+  add column if not exists model_mode text not null default 'council'
+  check (model_mode in ('council', 'single'));
+
+alter table public.conversations
+  add column if not exists selected_model text;
+
+alter table public.conversations
+  add column if not exists selected_model_title text;
 
 create table if not exists public.messages (
   id bigint generated always as identity primary key,
@@ -74,6 +87,16 @@ create table if not exists public.feedback_messages (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.app_models (
+  id bigint generated always as identity primary key,
+  title text not null,
+  model text not null unique,
+  category text not null,
+  active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 alter table public.billing_payments
   add column if not exists paid_at timestamptz;
 
@@ -102,11 +125,18 @@ create index if not exists feedback_messages_created_at_idx
 create index if not exists feedback_messages_user_id_created_at_idx
   on public.feedback_messages (user_id, created_at desc);
 
+create unique index if not exists app_models_model_uidx
+  on public.app_models (model);
+
+create index if not exists app_models_active_category_title_idx
+  on public.app_models (active desc, category asc, title asc);
+
 alter table public.conversations enable row level security;
 alter table public.messages enable row level security;
 alter table public.account_credits enable row level security;
 alter table public.billing_payments enable row level security;
 alter table public.feedback_messages enable row level security;
+alter table public.app_models enable row level security;
 
 drop policy if exists conversations_owner_select on public.conversations;
 drop policy if exists conversations_owner_insert on public.conversations;
@@ -212,6 +242,14 @@ create policy feedback_messages_owner_insert
   for insert
   to authenticated
   with check (auth.uid() = user_id);
+
+drop policy if exists app_models_active_select on public.app_models;
+
+create policy app_models_active_select
+  on public.app_models
+  for select
+  to authenticated
+  using (active = true);
 
 drop policy if exists messages_owner_select on public.messages;
 drop policy if exists messages_owner_insert on public.messages;
@@ -362,8 +400,10 @@ grant select, insert, update, delete on public.messages to authenticated;
 grant select, insert, update, delete on public.account_credits to authenticated;
 grant select, insert, update, delete on public.billing_payments to authenticated;
 grant select, insert, update, delete on public.feedback_messages to authenticated;
+grant select, insert, update, delete on public.app_models to authenticated;
 grant usage, select on sequence public.messages_id_seq to authenticated;
 grant usage, select on sequence public.feedback_messages_id_seq to authenticated;
+grant usage, select on sequence public.app_models_id_seq to authenticated;
 grant execute on function public.get_account_credits(uuid) to authenticated, service_role;
 grant execute on function public.add_account_credits(uuid, integer) to authenticated, service_role;
 grant execute on function public.consume_account_credit(uuid) to authenticated, service_role;
