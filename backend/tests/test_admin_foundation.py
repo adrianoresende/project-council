@@ -253,6 +253,43 @@ class AdminUsersContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payload["credits"], 199999)
 
 
+class AdminModelDiscoveryContractTests(unittest.IsolatedAsyncioTestCase):
+    async def test_get_admin_openrouter_models_forwards_query_and_limit(self):
+        rows = [
+            {
+                "id": "openai/gpt-5.1",
+                "name": "GPT-5.1",
+                "category": "openai",
+                "context_length": 128000,
+            }
+        ]
+        list_models_mock = AsyncMock(return_value=rows)
+
+        with patch("backend.main.list_openrouter_models", new=list_models_mock):
+            payload = await main.get_admin_openrouter_models(
+                query="gpt",
+                limit=15,
+                _={"id": "admin-1"},
+            )
+
+        list_models_mock.assert_awaited_once_with(query="gpt", limit=15)
+        self.assertEqual(payload, rows)
+
+    async def test_get_admin_openrouter_models_maps_client_error_to_502(self):
+        list_models_mock = AsyncMock(side_effect=RuntimeError("OpenRouter unavailable"))
+
+        with patch("backend.main.list_openrouter_models", new=list_models_mock):
+            with self.assertRaises(HTTPException) as raised:
+                await main.get_admin_openrouter_models(
+                    query=None,
+                    limit=50,
+                    _={"id": "admin-1"},
+                )
+
+        self.assertEqual(raised.exception.status_code, 502)
+        self.assertIn("OpenRouter unavailable", str(raised.exception.detail))
+
+
 class FeedbackContractsTests(unittest.IsolatedAsyncioTestCase):
     async def test_submit_feedback_trims_message_and_returns_contract(self):
         create_feedback_mock = AsyncMock(

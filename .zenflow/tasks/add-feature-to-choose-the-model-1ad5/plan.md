@@ -67,7 +67,8 @@ Save to `{@artifacts_path}/plan.md`. If the feature is trivial and doesn't warra
   - `uv run python -m unittest backend.tests.test_admin_models_api`
   - `uv run python -m unittest backend.tests.test_conversation_model_modes`
 
-### [ ] Step: Backend APIs for OpenRouter Discovery, Admin Management, and Conversation Mode
+### [x] Step: Backend APIs for OpenRouter Discovery, Admin Management, and Conversation Mode
+<!-- chat-id: 54bbf6f0-6cb8-4df4-bbf4-c04c31147639 -->
 
 - Extend `backend/services/openrouter/client.py` with OpenRouter model discovery support.
 - Update `backend/main.py` with:

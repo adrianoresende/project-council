@@ -14,6 +14,7 @@ import asyncio
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .services.supabase import storage
+from .services.openrouter import list_openrouter_models
 from .services.supabase.auth import (
     ROLE_ADMIN,
     ensure_default_user_role_metadata,
@@ -176,6 +177,68 @@ class AdminSystemModelsResponse(BaseModel):
     chairman_model: str
 
 
+class OpenRouterModelResponse(BaseModel):
+    """OpenRouter catalog model option row for admin search."""
+
+    id: str
+    name: str
+    category: str
+    context_length: int = 0
+
+
+class AppModelResponse(BaseModel):
+    """Managed app model row exposed to admin and user clients."""
+
+    id: int
+    title: str
+    model: str
+    category: str
+    active: bool
+    created_at: str
+    updated_at: str
+
+
+class CreateAppModelRequest(BaseModel):
+    """Request payload for creating a managed app model."""
+
+    title: str
+    model: str
+    category: str
+    active: bool = True
+
+
+class UpdateAppModelRequest(BaseModel):
+    """Request payload for editing a managed app model."""
+
+    title: str | None = None
+    model: str | None = None
+    category: str | None = None
+    active: bool | None = None
+
+
+class DeleteAppModelResponse(BaseModel):
+    """Delete contract for managed app models."""
+
+    id: int
+    deleted: bool
+
+
+class ConversationModelSelectionRequest(BaseModel):
+    """Request payload for selecting conversation model mode."""
+
+    model_mode: str
+    selected_model: str | None = None
+
+
+class ConversationModelSelectionResponse(BaseModel):
+    """Response payload for persisted conversation model selection."""
+
+    id: str
+    model_mode: str
+    selected_model: str | None = None
+    selected_model_title: str | None = None
+
+
 class BillingPaymentResponse(BaseModel):
     """A processed Stripe payment linked to an account."""
 
@@ -314,6 +377,38 @@ def _normalize_admin_target_user_id(user_id: str) -> str:
     if not normalized:
         raise HTTPException(status_code=400, detail="User id is required.")
     return normalized
+
+
+def _normalize_positive_int_id(raw_value: int, field_name: str) -> int:
+    """Validate numeric path ids used by admin resource endpoints."""
+    normalized_value = int(raw_value)
+    if normalized_value <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{field_name} must be a positive integer.",
+        )
+    return normalized_value
+
+
+def _normalize_model_mode(model_mode: str) -> str:
+    """Normalize and validate conversation model mode values."""
+    normalized_mode = model_mode.strip().lower() if isinstance(model_mode, str) else ""
+    if normalized_mode not in {"council", "single"}:
+        raise HTTPException(
+            status_code=400,
+            detail="model_mode must be either 'council' or 'single'.",
+        )
+    return normalized_mode
+
+
+def _normalize_optional_model_id(model_id: str | None) -> str | None:
+    """Trim optional selected model identifiers."""
+    if not isinstance(model_id, str):
+        return None
+    normalized_model_id = model_id.strip()
+    if not normalized_model_id:
+        return None
+    return normalized_model_id
 
 
 def _normalize_feedback_message(message: str) -> str:
@@ -829,6 +924,101 @@ async def get_admin_system_models(_: Dict[str, Any] = Depends(get_current_admin_
     }
 
 
+@app.get(
+    "/api/admin/openrouter/models",
+    response_model=List[OpenRouterModelResponse],
+)
+async def get_admin_openrouter_models(
+    query: str | None = Query(default=None, max_length=255),
+    limit: int = Query(default=50, ge=1, le=200),
+    _: Dict[str, Any] = Depends(get_current_admin_user),
+):
+    """Discover available models directly from OpenRouter for admin search."""
+    try:
+        return await list_openrouter_models(query=query, limit=limit)
+    except RuntimeError as error:
+        raise HTTPException(status_code=502, detail=str(error)) from error
+
+
+@app.get("/api/admin/models", response_model=List[AppModelResponse])
+async def get_admin_models(_: Dict[str, Any] = Depends(get_current_admin_user)):
+    """List managed app models for admin management screens."""
+    return await storage.list_app_models()
+
+
+@app.post("/api/admin/models", response_model=AppModelResponse)
+async def create_admin_model(
+    request: CreateAppModelRequest,
+    _: Dict[str, Any] = Depends(get_current_admin_user),
+):
+    """Create one managed app model for user-facing selection."""
+    existing_model = await storage.get_app_model_by_model(request.model)
+    if existing_model is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Managed model already exists for this OpenRouter model id.",
+        )
+
+    try:
+        return await storage.create_app_model(
+            request.title,
+            request.model,
+            request.category,
+            active=request.active,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.patch("/api/admin/models/{app_model_id}", response_model=AppModelResponse)
+async def update_admin_model(
+    app_model_id: int,
+    request: UpdateAppModelRequest,
+    _: Dict[str, Any] = Depends(get_current_admin_user),
+):
+    """Update editable managed model fields for admin management screens."""
+    normalized_model_id = _normalize_positive_int_id(app_model_id, "Model id")
+
+    if request.model is not None:
+        existing_model = await storage.get_app_model_by_model(request.model)
+        if (
+            existing_model is not None
+            and int(existing_model.get("id", 0)) != normalized_model_id
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="Managed model already exists for this OpenRouter model id.",
+            )
+
+    try:
+        updated_model = await storage.update_app_model(
+            normalized_model_id,
+            title=request.title,
+            model=request.model,
+            category=request.category,
+            active=request.active,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+    if updated_model is None:
+        raise HTTPException(status_code=404, detail="Managed model not found.")
+    return updated_model
+
+
+@app.delete("/api/admin/models/{app_model_id}", response_model=DeleteAppModelResponse)
+async def delete_admin_model(
+    app_model_id: int,
+    _: Dict[str, Any] = Depends(get_current_admin_user),
+):
+    """Delete one managed app model row."""
+    normalized_model_id = _normalize_positive_int_id(app_model_id, "Model id")
+    deleted = await storage.delete_app_model(normalized_model_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Managed model not found.")
+    return {"id": normalized_model_id, "deleted": True}
+
+
 @app.get("/api/admin/users/{user_id}", response_model=AdminUserResponse)
 async def get_admin_user(
     user_id: str,
@@ -899,6 +1089,13 @@ async def add_credits(
     )
 
 
+@app.get("/api/models", response_model=List[AppModelResponse])
+async def list_models(user: Dict[str, Any] = Depends(get_current_user)):
+    """List active managed models available for end-user conversation selection."""
+    _ = user
+    return await storage.list_active_app_models()
+
+
 @app.get("/api/conversations", response_model=List[ConversationMetadata])
 async def list_conversations(
     archived: bool = Query(default=False),
@@ -962,6 +1159,52 @@ async def archive_conversation(
         raise HTTPException(status_code=404, detail=str(error)) from error
 
     return {"id": conversation_id, "archived": request.archived}
+
+
+@app.patch(
+    "/api/conversations/{conversation_id}/model",
+    response_model=ConversationModelSelectionResponse,
+)
+async def update_conversation_model_selection(
+    conversation_id: str,
+    request: ConversationModelSelectionRequest,
+    user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Update per-conversation model mode and selected model."""
+    await get_owned_conversation(conversation_id, user["id"])
+    normalized_model_mode = _normalize_model_mode(request.model_mode)
+
+    selected_model: str | None = None
+    selected_model_title: str | None = None
+
+    if normalized_model_mode == "single":
+        selected_model = _normalize_optional_model_id(request.selected_model)
+        if selected_model is None:
+            raise HTTPException(
+                status_code=400,
+                detail="selected_model is required when model_mode is 'single'.",
+            )
+
+        app_model = await storage.get_app_model_by_model(selected_model)
+        if app_model is None or not bool(app_model.get("active")):
+            raise HTTPException(
+                status_code=400,
+                detail="Selected model is not available.",
+            )
+
+        selected_model = app_model.get("model") or selected_model
+        selected_model_title = app_model.get("title")
+
+    try:
+        return await storage.update_conversation_model_selection(
+            conversation_id,
+            user["id"],
+            model_mode=normalized_model_mode,
+            selected_model=selected_model,
+            selected_model_title=selected_model_title,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
 
 
 @app.post("/api/conversations/{conversation_id}/message")

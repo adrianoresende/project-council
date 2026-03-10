@@ -8,6 +8,10 @@ from ...utils import coerce_float as _to_float
 from ...utils import coerce_int as _to_int
 from ...utils import normalize_session_id
 
+OPENROUTER_MODELS_API_URL = "https://openrouter.ai/api/v1/models"
+OPENROUTER_MODELS_MAX_LIMIT = 200
+OPENROUTER_MODELS_DEFAULT_LIMIT = 50
+
 
 def _normalize_usage(raw_usage: Any) -> Dict[str, Any]:
     """
@@ -39,6 +43,113 @@ def _normalize_usage(raw_usage: Any) -> Dict[str, Any]:
         "total_tokens": total_tokens,
         "cost": cost,
     }
+
+
+def _normalize_openrouter_model_row(raw_row: Any) -> Dict[str, Any] | None:
+    """Normalize one OpenRouter model row into a lightweight API contract."""
+    if not isinstance(raw_row, dict):
+        return None
+
+    raw_id = raw_row.get("id")
+    if not isinstance(raw_id, str):
+        return None
+    model_id = raw_id.strip()
+    if not model_id:
+        return None
+
+    raw_name = raw_row.get("name")
+    model_name = raw_name.strip() if isinstance(raw_name, str) and raw_name.strip() else model_id
+
+    category = "unknown"
+    if "/" in model_id:
+        candidate = model_id.split("/", 1)[0].strip().lower()
+        if candidate:
+            category = candidate
+
+    context_length = _to_int(raw_row.get("context_length"))
+    if context_length <= 0:
+        top_provider = raw_row.get("top_provider")
+        if isinstance(top_provider, dict):
+            context_length = _to_int(top_provider.get("context_length"))
+
+    return {
+        "id": model_id,
+        "name": model_name,
+        "category": category,
+        "context_length": max(0, context_length),
+    }
+
+
+def _openrouter_model_matches_query(model_row: Dict[str, Any], query: str | None) -> bool:
+    """Return whether a normalized model row matches a search query."""
+    if not isinstance(query, str):
+        return True
+    normalized_query = query.strip().lower()
+    if not normalized_query:
+        return True
+
+    for key in ("id", "name", "category"):
+        value = model_row.get(key)
+        if isinstance(value, str) and normalized_query in value.lower():
+            return True
+    return False
+
+
+async def list_openrouter_models(
+    *,
+    query: str | None = None,
+    limit: int = OPENROUTER_MODELS_DEFAULT_LIMIT,
+    timeout: float = 20.0,
+) -> List[Dict[str, Any]]:
+    """
+    Discover OpenRouter models and normalize for admin search flows.
+
+    Returns:
+        List of {id, name, category, context_length} rows.
+    """
+    if not OPENROUTER_API_KEY:
+        raise RuntimeError("OpenRouter is not configured. Missing OPENROUTER_API_KEY.")
+
+    safe_limit = min(max(int(limit), 1), OPENROUTER_MODELS_MAX_LIMIT)
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.get(
+                OPENROUTER_MODELS_API_URL,
+                headers=headers,
+            )
+            response.raise_for_status()
+            payload = response.json()
+    except Exception as error:
+        raise RuntimeError(f"Failed to fetch models from OpenRouter: {error}") from error
+
+    raw_rows = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(raw_rows, list):
+        return []
+
+    rows: List[Dict[str, Any]] = []
+    seen_model_ids: set[str] = set()
+    for raw_row in raw_rows:
+        normalized_row = _normalize_openrouter_model_row(raw_row)
+        if normalized_row is None:
+            continue
+
+        model_id = normalized_row["id"]
+        if model_id in seen_model_ids:
+            continue
+        seen_model_ids.add(model_id)
+
+        if not _openrouter_model_matches_query(normalized_row, query):
+            continue
+
+        rows.append(normalized_row)
+        if len(rows) >= safe_limit:
+            break
+
+    return rows
 
 
 async def query_model(
