@@ -15,7 +15,6 @@ function renderChatInterface(props = {}) {
     onCancelMessage: vi.fn(),
     canCancelMessage: false,
     isLoading: false,
-    userPlan: "free",
   };
 
   return render(
@@ -25,7 +24,7 @@ function renderChatInterface(props = {}) {
   );
 }
 
-describe("ChatInterface web search toggle", () => {
+describe("ChatInterface composer actions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     HTMLElement.prototype.scrollIntoView = vi.fn();
@@ -35,25 +34,19 @@ describe("ChatInterface web search toggle", () => {
     cleanup();
   });
 
-  it("shows web search description in the composer tools menu", async () => {
-    const user = userEvent.setup();
-    renderChatInterface({ userPlan: "free" });
+  it("shows Search and Attach buttons in composer", () => {
+    renderChatInterface();
 
-    await user.click(screen.getByRole("button", { name: "Open file menu" }));
-
-    expect(
-      screen.getByText("Turn on search for the latest content or data"),
-    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Search" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Attach" })).toBeTruthy();
   });
 
   it("sends useWebSearch=true when toggle is enabled", async () => {
     const user = userEvent.setup();
     const onSendMessage = vi.fn();
-    renderChatInterface({ onSendMessage, userPlan: "pro" });
+    renderChatInterface({ onSendMessage });
 
-    await user.click(screen.getByRole("button", { name: "Open file menu" }));
-    await user.click(screen.getByRole("menuitem", { name: /Web search/i }));
-    expect(screen.getByRole("status", { name: /Web search/i })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Search" }));
 
     await user.type(screen.getByRole("textbox"), "Find latest AI updates");
     await user.click(screen.getByRole("button", { name: "Send" }));
@@ -66,20 +59,17 @@ describe("ChatInterface web search toggle", () => {
     );
   });
 
-  it("shows a green web icon next to the plus button when enabled", async () => {
+  it("shows active style on Search button when enabled", async () => {
     const user = userEvent.setup();
-    renderChatInterface({ userPlan: "pro" });
+    renderChatInterface();
 
-    expect(screen.queryByRole("status")).toBeNull();
+    const searchButton = screen.getByRole("button", { name: "Search" });
+    expect(searchButton.getAttribute("aria-pressed")).toBe("false");
 
-    await user.click(screen.getByRole("button", { name: "Open file menu" }));
-    await user.click(screen.getByRole("menuitem", { name: /Web search/i }));
+    await user.click(searchButton);
 
-    const webSearchIndicator = screen.getByRole("status", {
-      name: /Web search/i,
-    });
-    expect(webSearchIndicator).toBeTruthy();
-    expect(webSearchIndicator.className).toContain("text-emerald-600");
+    expect(searchButton.getAttribute("aria-pressed")).toBe("true");
+    expect(searchButton.className).toContain("text-emerald-700");
   });
 
   it("keeps web search enabled when switching to a new conversation", async () => {
@@ -90,7 +80,6 @@ describe("ChatInterface web search toggle", () => {
       onCancelMessage: vi.fn(),
       canCancelMessage: false,
       isLoading: false,
-      userPlan: "free",
     };
 
     const { rerender } = render(
@@ -102,11 +91,10 @@ describe("ChatInterface web search toggle", () => {
       </I18nProvider>,
     );
 
-    await user.click(screen.getByRole("button", { name: "Open file menu" }));
-    await user.click(screen.getByRole("menuitem", { name: /Web search/i }));
+    await user.click(screen.getByRole("button", { name: "Search" }));
     expect(
-      screen.getByRole("status", { name: /Web search/i }),
-    ).toBeTruthy();
+      screen.getByRole("button", { name: "Search" }).getAttribute("aria-pressed"),
+    ).toBe("true");
 
     rerender(
       <I18nProvider>
@@ -118,8 +106,8 @@ describe("ChatInterface web search toggle", () => {
     );
 
     expect(
-      screen.getByRole("status", { name: /Web search/i }),
-    ).toBeTruthy();
+      screen.getByRole("button", { name: "Search" }).getAttribute("aria-pressed"),
+    ).toBe("true");
 
     await user.type(screen.getByRole("textbox"), "Any updates?");
     await user.click(screen.getByRole("button", { name: "Send" }));
